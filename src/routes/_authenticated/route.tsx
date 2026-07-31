@@ -22,13 +22,14 @@ function Layout() {
   if (fullScreen) return <Outlet />;
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col">
+    <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col lg:max-w-5xl">
       <AppHeader />
-      <main className="flex-1 px-4 pb-28 pt-4">
+      <main className="flex-1 px-4 pb-28 pt-4 lg:px-8 lg:pt-8">
         <Outlet />
       </main>
       <BottomNav />
     </div>
+
   );
 }
 

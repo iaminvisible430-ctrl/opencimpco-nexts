@@ -105,11 +105,12 @@ function HomePage() {
         <p className="text-[13px] font-medium text-muted-foreground">
           {greet}, {displayName}
         </p>
-        <h1 className="mt-1 text-[34px] font-bold leading-[1.05]">
+        <h1 className="mt-1 text-[34px] font-bold leading-[1.05] lg:text-[52px]">
           Ship something
           <br />
           <span className="gradient-text">real today.</span>
         </h1>
+
       </section>
 
       <Composer
@@ -129,7 +130,7 @@ function HomePage() {
         <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           Quick starts
         </div>
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
           {STARTERS.map(({ icon: Icon, label, prompt: p }) => (
             <button
               key={label}

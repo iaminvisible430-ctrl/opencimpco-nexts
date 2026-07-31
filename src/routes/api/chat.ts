@@ -170,34 +170,77 @@ export const Route = createFileRoute("/api/chat")({
             .eq("chat_id", body.chatId)
             .order("created_at", { ascending: true });
 
-          const messages: ModelMessage[] = (history ?? [])
-            .map((m) => {
-              const { text, images } = splitAttachments(m.content);
-              if (m.role === "user" && images.length) {
-                return {
+          const { resolveModel, resolveOcrModel } = await import("@/lib/ai-gateway.server");
+
+          /**
+           * Text-only models still need to "see" attachments, so transcribe them
+           * with a vision model and inline the transcript as text.
+           */
+          async function ocr(images: string[]): Promise<string> {
+            const ocrModel = resolveOcrModel();
+            if (!ocrModel) return "";
+            try {
+              const { text } = await generateText({
+                model: ocrModel,
+                maxOutputTokens: 1200,
+                messages: [
+                  {
+                    role: "user",
+                    content: [
+                      {
+                        type: "text",
+                        text: "Transcribe and describe these attachments for a text-only coding model. Include: every readable word (exact error messages, labels, code), the layout/structure, colours, fonts and spacing. Be dense and factual, no preamble.",
+                      },
+                      ...images.map((u) => ({ type: "image" as const, image: new URL(u) })),
+                    ],
+                  },
+                ],
+              });
+              return text.trim();
+            } catch {
+              return "";
+            }
+          }
+
+          const messages: ModelMessage[] = [];
+          for (const m of history ?? []) {
+            const { text, images } = splitAttachments(m.content);
+            if (m.role === "user" && images.length) {
+              if (model.vision) {
+                messages.push({
                   role: "user",
                   content: [
                     { type: "text", text: text || " " },
                     ...images.map((u) => ({ type: "image" as const, image: new URL(u) })),
                   ],
-                } as ModelMessage;
+                } as ModelMessage);
+              } else {
+                const transcript = await ocr(images);
+                messages.push({
+                  role: "user",
+                  content:
+                    (text || " ") +
+                    (transcript
+                      ? `\n\n[attachment OCR — ${images.length} image(s)]\n${transcript}`
+                      : `\n\n[attachment OCR unavailable — ${images.length} image(s) attached]`),
+                } as ModelMessage);
               }
-              return {
-                role: m.role as "user" | "assistant",
-                content: text || m.content,
-              } as ModelMessage;
-            })
-            .filter((m) => (typeof m.content === "string" ? m.content.trim().length > 0 : true));
+              continue;
+            }
+            const content = text || m.content;
+            if (!content?.trim()) continue;
+            messages.push({ role: m.role as "user" | "assistant", content } as ModelMessage);
+          }
 
           if (!messages.length) return new Response("No messages to send", { status: 400 });
 
-          const { resolveModel } = await import("@/lib/ai-gateway.server");
           let languageModel;
           try {
             languageModel = resolveModel(model);
           } catch (e) {
             return new Response(e instanceof Error ? e.message : "model unavailable", { status: 500 });
           }
+
 
           const result = streamText({
             model: languageModel,

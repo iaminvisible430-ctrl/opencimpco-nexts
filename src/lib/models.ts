@@ -1,4 +1,11 @@
-export type ProviderKey = "lovable" | "openrouter" | "groq" | "cerebras" | "mistral";
+export type ProviderKey =
+  | "lovable"
+  | "openrouter"
+  | "groq"
+  | "cerebras"
+  | "mistral"
+  | "google"
+  | "cohere";
 
 /** Model ids are stored as plain text in the DB, so keep this a string union-ish alias. */
 export type CodexModelId = string;
@@ -22,28 +29,64 @@ export interface CodexModel {
 
 export const CODEX_MODELS: CodexModel[] = [
   {
-    id: "nemotron-super",
-    name: "Nemotron 3 Super",
-    tagline: "NVIDIA reasoning + coding, free tier",
-    tags: ["Thinking", "React", "Refactoring"],
-    cost: 120,
-    providerKey: "openrouter",
-    provider: "nvidia/nemotron-3-super-120b-a12b:free",
+    id: "oc-code-max",
+    name: "Opencimpco Code Max",
+    tagline: "Lovable AI flagship — best multi-file engineering",
+    tags: ["Best coding", "Multi-file", "Architecture"],
+    cost: 400,
+    providerKey: "lovable",
+    provider: "google/gemini-3.1-pro-preview",
     thinking: true,
-    tools: false,
-    speed: "balanced",
+    tools: true,
+    speed: "deep",
   },
   {
-    id: "nemotron-ultra",
-    name: "Nemotron 3 Ultra",
-    tagline: "550B NVIDIA flagship for hard builds",
-    tags: ["Thinking", "Architecture", "Multi-file"],
-    cost: 200,
-    providerKey: "openrouter",
-    provider: "nvidia/nemotron-3-ultra-550b-a55b:free",
+    id: "oc-code",
+    name: "Opencimpco Code",
+    tagline: "Lovable AI default — fast, strong full-stack coding",
+    tags: ["Balanced", "React", "Streaming"],
+    cost: 120,
+    providerKey: "lovable",
+    provider: "google/gemini-3.6-flash",
+    thinking: false,
+    tools: true,
+    speed: "fast",
+  },
+  {
+    id: "oc-gpt",
+    name: "Opencimpco GPT",
+    tagline: "GPT-5.4 via Lovable AI for tricky logic",
+    tags: ["Reasoning", "Debugging", "Refactors"],
+    cost: 350,
+    providerKey: "lovable",
+    provider: "openai/gpt-5.4",
     thinking: true,
-    tools: false,
+    tools: true,
     speed: "deep",
+  },
+  {
+    id: "gemini-pro-direct",
+    name: "Gemini 2.5 Pro",
+    tagline: "Direct Google API with your key",
+    tags: ["Long context", "Thinking", "Multimodal"],
+    cost: 100,
+    providerKey: "google",
+    provider: "gemini-2.5-pro",
+    thinking: true,
+    tools: true,
+    speed: "deep",
+  },
+  {
+    id: "gemini-flash-direct",
+    name: "Gemini 2.5 Flash",
+    tagline: "Direct Google API — quick iterations",
+    tags: ["Fast", "Cheap", "Everyday code"],
+    cost: 60,
+    providerKey: "google",
+    provider: "gemini-2.5-flash",
+    thinking: false,
+    tools: true,
+    speed: "fast",
   },
   {
     id: "qwen3-coder",
@@ -55,6 +98,18 @@ export const CODEX_MODELS: CodexModel[] = [
     provider: "qwen/qwen3-coder",
     thinking: false,
     tools: true,
+    speed: "balanced",
+  },
+  {
+    id: "nemotron-super",
+    name: "Nemotron 3 Super",
+    tagline: "NVIDIA reasoning + coding, free tier",
+    tags: ["Thinking", "React", "Refactoring"],
+    cost: 120,
+    providerKey: "openrouter",
+    provider: "nvidia/nemotron-3-super-120b-a12b:free",
+    thinking: true,
+    tools: false,
     speed: "balanced",
   },
   {
@@ -94,32 +149,20 @@ export const CODEX_MODELS: CodexModel[] = [
     speed: "fast",
   },
   {
-    id: "codex-0.1",
-    name: "Opencimpco Fast",
-    tagline: "Gemini Flash via Lovable AI",
-    tags: ["HTML / CSS / JS", "React", "Quick fixes"],
+    id: "command-a",
+    name: "Cohere Command A",
+    tagline: "Cohere's flagship for docs and tooling",
+    tags: ["Docs", "Tools", "Long context"],
     cost: 100,
-    providerKey: "lovable",
-    provider: "google/gemini-3.6-flash",
+    providerKey: "cohere",
+    provider: "command-a-03-2025",
     thinking: false,
     tools: true,
-    speed: "fast",
-  },
-  {
-    id: "codex-pro",
-    name: "Opencimpco Pro",
-    tagline: "Gemini Pro via Lovable AI",
-    tags: ["Architecture", "Refactoring", "Multi-file"],
-    cost: 500,
-    providerKey: "lovable",
-    provider: "google/gemini-2.5-pro",
-    thinking: true,
-    tools: true,
-    speed: "deep",
+    speed: "balanced",
   },
 ];
 
-export const DEFAULT_MODEL_ID = "nemotron-super";
+export const DEFAULT_MODEL_ID = "oc-code";
 
 export function getModel(id: string): CodexModel {
   return (

@@ -26,6 +26,16 @@ const OPENAI_COMPATIBLE: Record<
   groq: { baseURL: "https://api.groq.com/openai/v1", envKey: "GROQ_API_KEY", label: "Groq" },
   cerebras: { baseURL: "https://api.cerebras.ai/v1", envKey: "CEREBRAS_API_KEY", label: "Cerebras" },
   mistral: { baseURL: "https://api.mistral.ai/v1", envKey: "MISTRAL_API_KEY", label: "Mistral" },
+  google: {
+    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+    envKey: "GEMINI_API_KEY",
+    label: "Google Gemini",
+  },
+  cohere: {
+    baseURL: "https://api.cohere.ai/compatibility/v1",
+    envKey: "COHERE_API_KEY",
+    label: "Cohere",
+  },
 };
 
 /**

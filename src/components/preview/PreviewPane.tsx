@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Code2,
   CheckCircle2,
   Copy,
   ExternalLink,
@@ -12,6 +13,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { buildPreviewDoc, projectKind, type PFile } from "@/lib/preview/build";
+import { analyzeProject } from "@/lib/preview/analyze";
+import { CodeEditor } from "./CodeEditor";
+import { TerminalPane } from "./TerminalPane";
 import { cn } from "@/lib/utils";
 
 type LogLine = { level: string; text: string };
@@ -28,13 +32,21 @@ export function PreviewPane({
 }) {
   const [device, setDevice] = useState<"mobile" | "desktop">(defaultDevice);
   const runnable = projectKind(files) !== null;
-  const [view, setView] = useState<"app" | "files" | "console">(runnable ? "app" : "files");
+  const [view, setView] = useState<"app" | "editor" | "console" | "terminal">(runnable ? "app" : "editor");
+  const [edits, setEdits] = useState<Record<string, string>>({});
   const [nonce, setNonce] = useState(0);
   const [status, setStatus] = useState<Status>("loading");
   const [logs, setLogs] = useState<LogLine[]>([]);
   const frame = useRef<HTMLIFrameElement>(null);
 
-  const doc = useMemo(() => (runnable ? buildPreviewDoc(files) : ""), [files, runnable]);
+  const merged = useMemo(
+    () => files.map((f) => (edits[f.path] !== undefined ? { ...f, code: edits[f.path] } : f)),
+    [files, edits],
+  );
+  const [openPath, setOpenPath] = useState("");
+  const active = merged.find((f) => f.path === openPath) ?? merged[0];
+  const issues = useMemo(() => analyzeProject(merged), [merged]);
+  const doc = useMemo(() => (runnable ? buildPreviewDoc(merged) : ""), [merged, runnable]);
 
   useEffect(() => {
     if (!runnable) return;
@@ -75,11 +87,17 @@ export function PreviewPane({
             App
           </Seg>
         )}
-        <Seg active={view === "files"} onClick={() => setView("files")}>
-          <FileCode2 className="h-3.5 w-3.5" /> {files.length} files
+        <Seg active={view === "editor"} onClick={() => setView("editor")}>
+          <Code2 className="h-3.5 w-3.5" /> {files.length} files
+        </Seg>
+        <Seg active={view === "terminal"} onClick={() => setView("terminal")}>
+          <Terminal className="h-3.5 w-3.5" /> Terminal
         </Seg>
         <Seg active={view === "console"} onClick={() => setView("console")}>
-          <Terminal className="h-3.5 w-3.5" />
+          <FileCode2 className="h-3.5 w-3.5" /> Console
+          {issues.length > 0 && (
+            <span className="text-[color:var(--ember)]">{issues.length}</span>
+          )}
           {errorCount > 0 && <span className="text-destructive">{errorCount}</span>}
         </Seg>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -118,11 +136,58 @@ export function PreviewPane({
         </div>
       )}
 
-      {view === "files" && <FileBrowser files={files} />}
+      {view === "editor" && active && (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex gap-1.5 overflow-x-auto border-b border-border px-3 py-2 scroll-none">
+            {merged.map((f) => (
+              <button
+                key={f.path}
+                onClick={() => setOpenPath(f.path)}
+                className={cn(
+                  "pill tap tap-press shrink-0 px-3 py-1 font-mono text-[11px]",
+                  f.path === active.path
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-[oklch(1_0_0_/_0.05)] text-muted-foreground",
+                )}
+              >
+                {f.path}
+                {edits[f.path] !== undefined ? " •" : ""}
+              </button>
+            ))}
+          </div>
+          <CodeEditor
+            file={active}
+            edited={edits[active.path] !== undefined}
+            onSave={(code) => setEdits((e) => ({ ...e, [active.path]: code }))}
+            onReset={() =>
+              setEdits((e) => {
+                const next = { ...e };
+                delete next[active.path];
+                return next;
+              })
+            }
+          />
+        </div>
+      )}
+
+      {view === "terminal" && <TerminalPane files={merged} />}
 
       {view === "console" && (
         <div className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11px] leading-5">
-          {logs.length === 0 && <div className="text-muted-foreground">No output yet.</div>}
+          {issues.map((i, k) => (
+            <div
+              key={`issue-${k}`}
+              className={cn(
+                "border-b border-border/60 py-1",
+                i.level === "error" ? "text-destructive" : "text-[color:var(--ember)]",
+              )}
+            >
+              <span className="uppercase opacity-60">{i.level}</span> {i.file}: {i.message}
+            </div>
+          ))}
+          {logs.length === 0 && issues.length === 0 && (
+            <div className="text-muted-foreground">No issues found.</div>
+          )}
           {logs.map((l, i) => (
             <div
               key={i}

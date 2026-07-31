@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Loader2 } from "lucide-react";
+import { highlight } from "@/lib/highlight";
 import { cn } from "@/lib/utils";
 
 function Inline({ text }: { text: string }) {
@@ -23,37 +24,93 @@ function Inline({ text }: { text: string }) {
   );
 }
 
-export function CodeBlock({ lang, path, code }: { lang: string; path?: string; code: string }) {
+export function CodeBlock({
+  lang,
+  path,
+  code,
+  streaming,
+}: {
+  lang: string;
+  path?: string;
+  code: string;
+  streaming?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="my-3 overflow-hidden rounded-xl border border-border bg-[oklch(0_0_0_/_0.4)]">
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
-        <span className="truncate font-mono text-[11px] text-muted-foreground">
+        <span
+          className={cn(
+            "truncate font-mono text-[11px]",
+            streaming ? "shimmer-text font-semibold" : "text-muted-foreground",
+          )}
+        >
           {path || lang || "code"}
         </span>
-        <button
-          onClick={() => {
-            navigator.clipboard?.writeText(code);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1200);
-          }}
-          className="tap shrink-0 text-muted-foreground hover:text-foreground"
-          aria-label="Copy code"
-        >
-          {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-        </button>
+        {streaming ? (
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[color:var(--signal)]" />
+        ) : (
+          <button
+            onClick={() => {
+              navigator.clipboard?.writeText(code);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+            }}
+            className="tap shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label="Copy code"
+          >
+            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
+        )}
       </div>
-      <pre className="max-h-[320px] overflow-auto p-3 font-mono text-[11.5px] leading-5">
-        <code>{code}</code>
+      <pre className="code-scroll max-h-[320px] overflow-auto p-3 font-mono text-[11.5px] leading-5">
+        <code>{highlight(code, lang)}</code>
       </pre>
     </div>
   );
 }
 
-/** Small, dependency-free markdown renderer for chat answers. */
-export function Markdown({ text, className }: { text: string; className?: string }) {
-  const chunks = text.split(/```([^\n`]*)\n?([\s\S]*?)```/g);
+function fenceMeta(info: string) {
+  const tokens = (info || "").trim().split(/\s+/).filter(Boolean);
+  let lang = (tokens[0] || "").toLowerCase();
+  let path = tokens
+    .slice(1)
+    .map((t) => t.replace(/^(file|title)=/, "").replace(/["']/g, ""))
+    .find((t) => /\.[a-z0-9]+$/i.test(t));
+  if (!path && /\.[a-z0-9]+$/i.test(lang)) {
+    path = lang;
+    lang = path.split(".").pop()!.toLowerCase();
+  }
+  return { lang, path };
+}
+
+/**
+ * Small dependency-free markdown renderer.
+ * Handles a still-open ``` fence so code renders live while streaming.
+ */
+export function Markdown({
+  text,
+  className,
+  streaming,
+}: {
+  text: string;
+  className?: string;
+  streaming?: boolean;
+}) {
   const out: React.ReactNode[] = [];
+  let rest = text;
+  let openBlock: { info: string; code: string } | null = null;
+
+  const closedFences = rest.match(/```/g)?.length ?? 0;
+  if (closedFences % 2 === 1) {
+    const idx = rest.lastIndexOf("```");
+    const tail = rest.slice(idx + 3);
+    const nl = tail.indexOf("\n");
+    openBlock = nl === -1 ? { info: tail, code: "" } : { info: tail.slice(0, nl), code: tail.slice(nl + 1) };
+    rest = rest.slice(0, idx);
+  }
+
+  const chunks = rest.split(/```([^\n`]*)\n?([\s\S]*?)```/g);
 
   for (let i = 0; i < chunks.length; i++) {
     if (i % 3 === 0) {
@@ -94,12 +151,18 @@ export function Markdown({ text, className }: { text: string; className?: string
         );
       });
     } else if (i % 3 === 1) {
-      const info = (chunks[i] || "").trim().split(/\s+/);
-      const code = chunks[i + 1] ?? "";
-      const path = info.slice(1).find((t) => /\.[a-z0-9]+$/i.test(t));
-      out.push(<CodeBlock key={i} lang={info[0] || ""} path={path} code={code} />);
+      const { lang, path } = fenceMeta(chunks[i] || "");
+      out.push(<CodeBlock key={i} lang={lang} path={path} code={chunks[i + 1] ?? ""} />);
       i += 1;
     }
   }
+
+  if (openBlock) {
+    const { lang, path } = fenceMeta(openBlock.info);
+    out.push(
+      <CodeBlock key="open" lang={lang} path={path} code={openBlock.code} streaming={streaming} />,
+    );
+  }
+
   return <div className={cn("min-w-0", className)}>{out}</div>;
 }

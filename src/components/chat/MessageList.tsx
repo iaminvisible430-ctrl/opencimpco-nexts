@@ -1,8 +1,10 @@
-import { Copy, Sparkles } from "lucide-react";
+import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { parseThinking, splitAttachments } from "@/lib/parse-thinking";
+import { deriveSteps, stripMarkers } from "@/lib/agent-steps";
 import { Markdown } from "./Markdown";
 import { ThinkingPanel } from "./ThinkingPanel";
+import { AgentActivity, AgentBooting } from "./AgentActivity";
 
 export type ChatMessage = {
   id: string;
@@ -36,18 +38,21 @@ function UserBubble({ content }: { content: string }) {
 
 function AssistantMessage({ content, streaming }: { content: string; streaming?: boolean }) {
   const { thinking, visible, isThinking } = parseThinking(content);
+  const steps = deriveSteps(content, !!streaming);
+  const body = stripMarkers(visible);
   return (
     <div className="space-y-2.5">
       {(thinking || (streaming && isThinking)) && (
         <ThinkingPanel text={thinking} live={!!streaming && isThinking} />
       )}
-      {visible && (
+      {steps.length > 0 && <AgentActivity steps={steps} />}
+      {body && (
         <div>
-          <Markdown text={visible} />
+          <Markdown text={body} streaming={streaming} />
           {!streaming && (
             <button
               onClick={() => {
-                navigator.clipboard?.writeText(visible).catch(() => {});
+                navigator.clipboard?.writeText(body).catch(() => {});
                 toast.success("Copied");
               }}
               aria-label="Copy answer"
@@ -58,12 +63,7 @@ function AssistantMessage({ content, streaming }: { content: string; streaming?:
           )}
         </div>
       )}
-      {streaming && !visible && !isThinking && (
-        <div className="flex items-center gap-2 text-sm">
-          <Sparkles className="h-4 w-4 text-[color:var(--ember)]" />
-          <span className="shimmer-text font-semibold">Writing code…</span>
-        </div>
-      )}
+      {streaming && !body && !isThinking && !steps.length && <AgentBooting />}
     </div>
   );
 }

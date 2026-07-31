@@ -91,16 +91,17 @@ function ChatPage() {
       if (!sess.session) throw new Error("Session expired");
       const persisted =
         content + (attachments.length ? "\n" + attachments.map((a) => `[[img:${a}]]`).join("\n") : "");
-      await supabase.from("messages").insert({
+      const { error: insertError } = await supabase.from("messages").insert({
         chat_id: id,
         user_id: sess.session.user.id,
         role: "user",
         content: persisted,
       });
+      if (insertError) throw insertError;
       setInput("");
       setAttachments([]);
       setTab("chat");
-      qc.invalidateQueries({ queryKey: ["chat", id] });
+      await qc.invalidateQueries({ queryKey: ["chat", id] });
       await run(modelId);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "failed to send");

@@ -120,6 +120,14 @@ export const Route = createFileRoute("/api/chat")({
           const userId = claims.data?.claims?.sub;
           if (!userId) return new Response("Unauthorized", { status: 401 });
 
+          const { data: ownedChat, error: chatError } = await supabase
+            .from("chats")
+            .select("id")
+            .eq("id", body.chatId)
+            .eq("user_id", userId)
+            .single();
+          if (chatError || !ownedChat) return new Response("Chat not found", { status: 404 });
+
           const { data: profile, error: perr } = await supabase
             .from("profiles")
             .select("credits")
@@ -172,7 +180,7 @@ export const Route = createFileRoute("/api/chat")({
             model: languageModel,
             system: SYSTEM_PROMPT,
             messages,
-            stopWhen: stepCountIs(model.tools ? 5 : 1),
+            stopWhen: stepCountIs(model.tools ? 50 : 1),
             // Third-party providers default to huge budgets that some accounts cannot afford,
             // and Groq's free tier rejects large per-request token budgets outright.
             ...(model.providerKey === "lovable"
@@ -188,7 +196,7 @@ export const Route = createFileRoute("/api/chat")({
                     web_search: tool({
                       description:
                         "Search the live web for current documentation, APIs, news or facts. Returns up to 5 results with title, snippet and URL.",
-                      inputSchema: z.object({ query: z.string().min(2).max(200) }),
+                      inputSchema: z.object({ query: z.string() }),
                       execute: async ({ query }) => webSearch(query),
                     }),
                   },
@@ -229,29 +237,39 @@ export const Route = createFileRoute("/api/chat")({
                   }
                 }
                 if (reasoningOpen) push("</thinking>\n\n");
-                controller.close();
               } catch (e) {
                 const msg = e instanceof Error ? e.message : "stream error";
                 push(`\n\n[error] ${msg}`);
-                controller.close();
               }
               try {
-                await supabase.from("messages").insert({
+                // Persist before closing the response stream. The client refetches as
+                // soon as the stream closes, so closing first creates a race where the
+                // streamed answer is removed before this row exists.
+                const { error: messageError } = await supabase.from("messages").insert({
                   chat_id: body.chatId,
                   user_id: userId,
                   role: "assistant",
                   content: full || "(no response)",
                 });
-                await supabase
+                if (messageError) throw messageError;
+
+                const { error: chatUpdateError } = await supabase
                   .from("chats")
                   .update({ updated_at: new Date().toISOString(), model: model.id })
-                  .eq("id", body.chatId);
-                await supabase
+                  .eq("id", body.chatId)
+                  .eq("user_id", userId);
+                if (chatUpdateError) throw chatUpdateError;
+
+                const { error: creditError } = await supabase
                   .from("profiles")
                   .update({ credits: (profile.credits ?? 0) - model.cost })
                   .eq("id", userId);
+                if (creditError) throw creditError;
               } catch (e) {
                 console.error("[/api/chat persist]", e);
+                push("\n\n[error] The answer could not be saved. Please copy it before retrying.");
+              } finally {
+                controller.close();
               }
             },
           });

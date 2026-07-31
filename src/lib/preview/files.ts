@@ -10,10 +10,77 @@ const EXT_LANG: Record<string, string> = {
   jsx: "jsx",
   tsx: "tsx",
   js: "js",
+  mjs: "js",
+  ts: "ts",
+  css: "css",
+  scss: "css",
+  html: "html",
+  htm: "html",
+  json: "json",
+  md: "md",
+  py: "python",
+  rb: "ruby",
+  go: "go",
+  rs: "rust",
+  java: "java",
+  kt: "kotlin",
+  swift: "swift",
+  php: "php",
+  c: "c",
+  h: "c",
+  cpp: "cpp",
+  cs: "csharp",
+  sql: "sql",
+  sh: "bash",
+  yml: "yaml",
+  yaml: "yaml",
+  toml: "toml",
+  vue: "vue",
+  svelte: "svelte",
+  dart: "dart",
+};
+
+const ALIAS: Record<string, string> = {
+  react: "jsx",
+  javascript: "js",
+  typescript: "ts",
+  typescriptreact: "tsx",
+  javascriptreact: "jsx",
+  py: "python",
+  shell: "bash",
+  sh: "bash",
+  golang: "go",
+  "c++": "cpp",
+  "c#": "csharp",
+};
+
+const LANG_EXT: Record<string, string> = {
+  jsx: "jsx",
+  tsx: "tsx",
+  js: "js",
   ts: "ts",
   css: "css",
   html: "html",
   json: "json",
+  md: "md",
+  python: "py",
+  ruby: "rb",
+  go: "go",
+  rust: "rs",
+  java: "java",
+  kotlin: "kt",
+  swift: "swift",
+  php: "php",
+  c: "c",
+  cpp: "cpp",
+  csharp: "cs",
+  sql: "sql",
+  bash: "sh",
+  yaml: "yml",
+  toml: "toml",
+  vue: "vue",
+  svelte: "svelte",
+  dart: "dart",
 };
 
 function normalize(p: string) {
@@ -23,9 +90,10 @@ function normalize(p: string) {
 function defaultPath(lang: string, index: number) {
   if (lang === "html") return index === 0 ? "index.html" : `page-${index}.html`;
   if (lang === "css") return index === 0 ? "styles.css" : `styles-${index}.css`;
-  if (["jsx", "tsx", "react"].includes(lang)) return index === 0 ? "src/App.jsx" : `src/File${index}.jsx`;
-  if (["js", "javascript"].includes(lang)) return index === 0 ? "script.js" : `script-${index}.js`;
-  return `file-${index}.${lang || "txt"}`;
+  if (["jsx", "tsx"].includes(lang)) return index === 0 ? "src/App.jsx" : `src/File${index}.jsx`;
+  if (lang === "js") return index === 0 ? "script.js" : `script-${index}.js`;
+  const ext = LANG_EXT[lang] ?? (lang || "txt");
+  return index === 0 ? `main.${ext}` : `file-${index}.${ext}`;
 }
 
 /**
@@ -33,6 +101,7 @@ function defaultPath(lang: string, index: number) {
  * Supported info strings:
  *   ```jsx src/App.jsx
  *   ```tsx file=src/Card.tsx
+ *   ```python app/main.py
  *   ```css
  */
 export function parseProjectFiles(text: string): PFile[] {
@@ -58,11 +127,14 @@ export function parseProjectFiles(text: string): PFile[] {
       const ext = path.split(".").pop()!.toLowerCase();
       lang = EXT_LANG[ext] ?? lang ?? ext;
     }
-    if (lang === "react") lang = "jsx";
-    if (lang === "javascript") lang = "js";
-    if (lang === "typescript") lang = "ts";
+    lang = ALIAS[lang] ?? lang;
     if (!path) path = defaultPath(lang, i);
-    files.push({ path: normalize(path), lang, code });
+    const normalized = normalize(path);
+    const existing = files.findIndex((f) => f.path === normalized);
+    const file = { path: normalized, lang, code };
+    // A later block for the same path is a revision — keep the newest.
+    if (existing >= 0) files[existing] = file;
+    else files.push(file);
     i++;
   }
   return files;
@@ -82,4 +154,9 @@ export function projectKind(files: PFile[]): ProjectKind {
   if (runnable.some((f) => /(^|\n)\s*(import|export)\s/.test(f.code) && f.lang === "js")) return "react";
   if (runnable.some((f) => f.lang === "html" || f.lang === "css" || f.lang === "js")) return "html";
   return null;
+}
+
+/** True when the project has files worth showing in the file browser. */
+export function hasFiles(files: PFile[]): boolean {
+  return files.length > 0;
 }

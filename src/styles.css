@@ -1,0 +1,190 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 3px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 10px);
+  --radius-3xl: calc(var(--radius) + 18px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ember: var(--ember);
+  --color-signal: var(--signal);
+  --color-success: var(--success);
+  --color-surface: var(--surface);
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --radius: 0.9rem;
+
+  /* Ink & Ember — cool graphite canvas, warm ember signal */
+  --background: oklch(0.165 0.008 250);
+  --foreground: oklch(0.97 0.004 250);
+  --surface: oklch(0.215 0.01 250);
+  --card: oklch(0.215 0.01 250);
+  --card-foreground: oklch(0.97 0.004 250);
+  --popover: oklch(0.205 0.01 250);
+  --popover-foreground: oklch(0.97 0.004 250);
+
+  --primary: oklch(0.76 0.16 62);
+  --primary-foreground: oklch(0.19 0.02 60);
+  --secondary: oklch(0.26 0.012 250);
+  --secondary-foreground: oklch(0.97 0.004 250);
+  --muted: oklch(0.26 0.012 250);
+  --muted-foreground: oklch(0.71 0.012 250);
+  --accent: oklch(0.3 0.03 62);
+  --accent-foreground: oklch(0.97 0.004 250);
+  --destructive: oklch(0.63 0.2 25);
+  --destructive-foreground: oklch(0.98 0.005 250);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.76 0.16 62);
+
+  --ember: oklch(0.76 0.16 62);
+  --signal: oklch(0.8 0.12 190);
+  --success: oklch(0.76 0.16 155);
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+  html {
+    color-scheme: dark;
+  }
+  * {
+    border-color: var(--color-border);
+  }
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      radial-gradient(900px 420px at 80% -8%, oklch(0.55 0.15 62 / 0.14), transparent 62%),
+      radial-gradient(700px 380px at 0% 12%, oklch(0.5 0.1 200 / 0.1), transparent 60%);
+    background-attachment: fixed;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
+
+@utility font-display {
+  font-family: var(--font-display);
+}
+
+@utility gradient-text {
+  background: linear-gradient(96deg, var(--ember), oklch(0.85 0.13 85) 55%, var(--signal));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility ember-glow {
+  box-shadow:
+    0 12px 34px -14px oklch(0.72 0.17 62 / 0.75),
+    0 0 0 1px oklch(1 0 0 / 0.06) inset;
+}
+
+@utility panel {
+  background: linear-gradient(180deg, oklch(1 0 0 / 0.045), oklch(1 0 0 / 0.012));
+  border: 1px solid oklch(1 0 0 / 0.09);
+  border-radius: var(--radius-2xl);
+}
+
+@utility hairline {
+  border: 1px solid oklch(1 0 0 / 0.08);
+}
+
+@utility pill {
+  border-radius: 999px;
+}
+
+@utility tap {
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.14s ease,
+    background-color 0.14s ease,
+    opacity 0.14s ease;
+}
+
+@utility tap-press {
+  &:active {
+    transform: scale(0.96);
+  }
+}
+
+@utility shimmer-text {
+  background: linear-gradient(
+    90deg,
+    oklch(0.66 0.01 250) 0%,
+    oklch(0.95 0.09 62) 45%,
+    oklch(0.66 0.01 250) 90%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: oc-shimmer 1.5s linear infinite;
+}
+
+@keyframes oc-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@utility thinking-panel {
+  background: linear-gradient(180deg, oklch(0.8 0.12 190 / 0.09), oklch(0.8 0.12 190 / 0.03));
+  border: 1px solid oklch(0.8 0.12 190 / 0.22);
+  border-radius: var(--radius-xl);
+}
+
+@utility safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+}
+
+@utility scroll-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

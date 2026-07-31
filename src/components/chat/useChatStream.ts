@@ -6,11 +6,14 @@ export function useChatStream(chatId: string, onDone: () => void | Promise<void>
   const [streaming, setStreaming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
+  const running = useRef(false);
 
   const stop = useCallback(() => abort.current?.abort(), []);
 
   const run = useCallback(
     async (model: string) => {
+      if (running.current) return;
+      running.current = true;
       setError(null);
       setStreaming("");
       const controller = new AbortController();
@@ -51,6 +54,7 @@ export function useChatStream(chatId: string, onDone: () => void | Promise<void>
           await onDone();
         } finally {
           setStreaming(null);
+          running.current = false;
         }
       }
     },

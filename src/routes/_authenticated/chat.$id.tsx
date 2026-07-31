@@ -14,7 +14,7 @@ import { MessageList, type ChatMessage } from "@/components/chat/MessageList";
 import { Composer } from "@/components/chat/Composer";
 import { useChatStream } from "@/components/chat/useChatStream";
 import { PreviewPane } from "@/components/preview/PreviewPane";
-import { buildPreviewDoc, parseProjectFiles, projectKind } from "@/lib/preview/build";
+import { buildPreviewDoc, parseProjectFiles, projectKind, type PFile } from "@/lib/preview/build";
 import { parseThinking } from "@/lib/parse-thinking";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,18 @@ export const Route = createFileRoute("/_authenticated/chat/$id")({
   component: ChatPage,
 });
 
+function useIsWide() {
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const apply = () => setWide(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  return wide;
+}
+
 function ChatPage() {
   const { id } = Route.useParams();
   const { auto } = Route.useSearch();
@@ -32,6 +44,7 @@ function ChatPage() {
   const getChatFn = useServerFn(getChat);
   const getProfileFn = useServerFn(getProfile);
   const publishFn = useServerFn(publishArtifact);
+  const wide = useIsWide();
 
   const { data } = useQuery({ queryKey: ["chat", id], queryFn: () => getChatFn({ data: { id } }) });
   const { data: profile } = useQuery({ queryKey: ["profile"], queryFn: () => getProfileFn() });
@@ -86,6 +99,7 @@ function ChatPage() {
       });
       setInput("");
       setAttachments([]);
+      setTab("chat");
       qc.invalidateQueries({ queryKey: ["chat", id] });
       await run(modelId);
     } catch (e) {
@@ -103,24 +117,18 @@ function ChatPage() {
   }, [data, streaming]);
 
   const project = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
+    // Merge every assistant turn so earlier files stay in the project when a
+    // later message only re-emits the files it changed.
+    const merged = new Map<string, PFile>();
+    for (const m of messages) {
       if (m.role !== "assistant") continue;
       const { visible } = parseThinking(m.content);
-      const files = parseProjectFiles(visible);
-      const kind = projectKind(files);
-      if (kind) return { files, kind };
+      for (const f of parseProjectFiles(visible)) merged.set(f.path, f);
     }
-    return null;
+    const files = [...merged.values()];
+    if (!files.length) return null;
+    return { files, kind: projectKind(files) };
   }, [messages]);
-
-  useEffect(() => {
-    if (project && streaming === null && tab === "chat" && !autoSwitched.current) {
-      autoSwitched.current = true;
-      setTab("preview");
-    }
-  }, [project, streaming, tab]);
-  const autoSwitched = useRef(false);
 
   const publish = useMutation({
     mutationFn: async () => {
@@ -141,9 +149,12 @@ function ChatPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const showChat = wide || tab === "chat" || !project;
+  const showPreview = !!project && (wide || tab === "preview");
+
   return (
     <div className="fixed inset-0 flex flex-col bg-background">
-      <header className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border px-2 py-2">
+      <header className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-border px-2 py-2 lg:px-4">
         <button
           onClick={() => nav({ to: "/chats" })}
           aria-label="Back"
@@ -155,6 +166,7 @@ function ChatPage() {
           <div className="truncate text-[15px] font-semibold">{data?.chat.title ?? "Chat"}</div>
           <div className="truncate text-[11px] text-muted-foreground">
             {(profile?.credits ?? 0).toLocaleString()} credits
+            {project ? ` · ${project.files.length} files` : ""}
           </div>
         </div>
         {project && (
@@ -169,7 +181,7 @@ function ChatPage() {
       </header>
 
       {project && (
-        <div className="flex items-center gap-1 border-b border-border px-3 py-1.5">
+        <div className="flex items-center gap-1 border-b border-border px-3 py-1.5 lg:hidden">
           <Tab active={tab === "chat"} onClick={() => setTab("chat")}>
             <MessageSquare className="h-4 w-4" /> Chat
           </Tab>
@@ -179,32 +191,51 @@ function ChatPage() {
         </div>
       )}
 
-      {tab === "chat" || !project ? (
-        <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          <MessageList messages={messages} />
-          {error && (
-            <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm">
-              {error}
+      <div className="flex min-h-0 flex-1 flex-row">
+        {showChat && (
+          <div
+            className={cn(
+              "flex min-h-0 min-w-0 flex-col",
+              showPreview ? "w-full lg:w-[420px] lg:shrink-0 lg:border-r lg:border-border xl:w-[480px]" : "flex-1",
+            )}
+          >
+            <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+              <div className={cn("mx-auto w-full", showPreview ? "" : "max-w-3xl")}>
+                <MessageList messages={messages} />
+                {error && (
+                  <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm">
+                    {error}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-        </div>
-      ) : (
-        <PreviewPane files={project.files} className="min-h-0 flex-1" />
-      )}
 
-      <div className="safe-bottom border-t border-border p-2.5">
-        <Composer
-          value={input}
-          onChange={setInput}
-          attachments={attachments}
-          onAttachments={setAttachments}
-          modelId={modelId}
-          onOpenModels={() => setModelOpen(true)}
-          onSend={send}
-          onStop={stop}
-          busy={streaming !== null}
-          placeholder="Ask for a change, a fix, or a new screen…"
-        />
+            <div className="safe-bottom border-t border-border p-2.5">
+              <div className={cn("mx-auto w-full", showPreview ? "" : "max-w-3xl")}>
+                <Composer
+                  value={input}
+                  onChange={setInput}
+                  attachments={attachments}
+                  onAttachments={setAttachments}
+                  modelId={modelId}
+                  onOpenModels={() => setModelOpen(true)}
+                  onSend={send}
+                  onStop={stop}
+                  busy={streaming !== null}
+                  placeholder="Ask for a change, a fix, or a new screen…"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showPreview && project && (
+          <PreviewPane
+            files={project.files}
+            defaultDevice={wide ? "desktop" : "mobile"}
+            className="min-h-0 min-w-0 flex-1"
+          />
+        )}
       </div>
 
       <ModelSheet

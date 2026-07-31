@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  Copy,
   ExternalLink,
   FileCode2,
   Monitor,
@@ -9,28 +10,39 @@ import {
   Smartphone,
   Terminal,
 } from "lucide-react";
-import { buildPreviewDoc, type PFile } from "@/lib/preview/build";
+import { toast } from "sonner";
+import { buildPreviewDoc, projectKind, type PFile } from "@/lib/preview/build";
 import { cn } from "@/lib/utils";
 
 type LogLine = { level: string; text: string };
 type Status = "loading" | "ok" | "error";
 
-export function PreviewPane({ files, className }: { files: PFile[]; className?: string }) {
-  const [device, setDevice] = useState<"mobile" | "desktop">("mobile");
-  const [view, setView] = useState<"app" | "files" | "console">("app");
+export function PreviewPane({
+  files,
+  className,
+  defaultDevice = "desktop",
+}: {
+  files: PFile[];
+  className?: string;
+  defaultDevice?: "mobile" | "desktop";
+}) {
+  const [device, setDevice] = useState<"mobile" | "desktop">(defaultDevice);
+  const runnable = projectKind(files) !== null;
+  const [view, setView] = useState<"app" | "files" | "console">(runnable ? "app" : "files");
   const [nonce, setNonce] = useState(0);
   const [status, setStatus] = useState<Status>("loading");
   const [logs, setLogs] = useState<LogLine[]>([]);
   const frame = useRef<HTMLIFrameElement>(null);
 
-  const doc = useMemo(() => buildPreviewDoc(files), [files]);
+  const doc = useMemo(() => (runnable ? buildPreviewDoc(files) : ""), [files, runnable]);
 
   useEffect(() => {
+    if (!runnable) return;
     setStatus("loading");
     setLogs([]);
     const t = setTimeout(() => setStatus((s) => (s === "loading" ? "error" : s)), 12000);
     return () => clearTimeout(t);
-  }, [doc, nonce]);
+  }, [doc, nonce, runnable]);
 
   useEffect(() => {
     function onMsg(e: MessageEvent) {
@@ -57,32 +69,41 @@ export function PreviewPane({ files, className }: { files: PFile[]; className?: 
   return (
     <div className={cn("flex min-h-0 flex-col bg-background", className)}>
       <div className="flex items-center gap-1.5 overflow-x-auto border-b border-border px-3 py-2 scroll-none">
-        <StatusDot status={status} />
-        <Seg active={view === "app"} onClick={() => setView("app")}>
-          App
-        </Seg>
+        {runnable && <StatusDot status={status} />}
+        {runnable && (
+          <Seg active={view === "app"} onClick={() => setView("app")}>
+            App
+          </Seg>
+        )}
         <Seg active={view === "files"} onClick={() => setView("files")}>
-          <FileCode2 className="h-3.5 w-3.5" /> {files.length}
+          <FileCode2 className="h-3.5 w-3.5" /> {files.length} files
         </Seg>
         <Seg active={view === "console"} onClick={() => setView("console")}>
           <Terminal className="h-3.5 w-3.5" />
           {errorCount > 0 && <span className="text-destructive">{errorCount}</span>}
         </Seg>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          <IconBtn label="Device" onClick={() => setDevice((d) => (d === "mobile" ? "desktop" : "mobile"))}>
-            {device === "mobile" ? <Smartphone className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
-          </IconBtn>
-          <IconBtn label="Reload" onClick={() => setNonce((n) => n + 1)}>
-            <RotateCw className="h-4 w-4" />
-          </IconBtn>
-          <IconBtn label="Open" onClick={openInTab}>
-            <ExternalLink className="h-4 w-4" />
-          </IconBtn>
+          {runnable && (
+            <>
+              <IconBtn
+                label="Device"
+                onClick={() => setDevice((d) => (d === "mobile" ? "desktop" : "mobile"))}
+              >
+                {device === "mobile" ? <Smartphone className="h-4 w-4" /> : <Monitor className="h-4 w-4" />}
+              </IconBtn>
+              <IconBtn label="Reload" onClick={() => setNonce((n) => n + 1)}>
+                <RotateCw className="h-4 w-4" />
+              </IconBtn>
+              <IconBtn label="Open in new tab" onClick={openInTab}>
+                <ExternalLink className="h-4 w-4" />
+              </IconBtn>
+            </>
+          )}
         </div>
       </div>
 
-      {view === "app" && (
-        <div className="flex min-h-0 flex-1 justify-center overflow-auto bg-[oklch(0.12_0.008_250)] p-2">
+      {view === "app" && runnable && (
+        <div className="flex min-h-0 flex-1 justify-center overflow-auto bg-[oklch(0.12_0.008_250)] p-1.5 sm:p-3">
           <iframe
             key={nonce}
             ref={frame}
@@ -90,7 +111,7 @@ export function PreviewPane({ files, className }: { files: PFile[]; className?: 
             sandbox="allow-scripts allow-forms allow-modals allow-popups"
             srcDoc={doc}
             className={cn(
-              "h-full w-full rounded-xl border border-border bg-white",
+              "h-full w-full rounded-xl border border-border bg-white shadow-2xl",
               device === "mobile" ? "max-w-[420px]" : "max-w-none",
             )}
           />
@@ -140,6 +161,20 @@ function FileBrowser({ files }: { files: PFile[] }) {
           </button>
         ))}
       </div>
+      {active && (
+        <div className="flex items-center justify-between border-b border-border px-3 py-1.5 text-[11px] text-muted-foreground">
+          <span className="uppercase tracking-wider">{active.lang || "text"}</span>
+          <button
+            onClick={() => {
+              navigator.clipboard?.writeText(active.code).catch(() => {});
+              toast.success("File copied");
+            }}
+            className="tap tap-press flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-[oklch(1_0_0_/_0.06)]"
+          >
+            <Copy className="h-3.5 w-3.5" /> Copy
+          </button>
+        </div>
+      )}
       <pre className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11px] leading-5">
         <code>{active?.code}</code>
       </pre>

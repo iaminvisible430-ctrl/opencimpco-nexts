@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Code2,
   CheckCircle2,
   Copy,
   ExternalLink,

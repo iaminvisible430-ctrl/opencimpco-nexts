@@ -36,7 +36,35 @@ const OPENAI_COMPATIBLE: Record<
     envKey: "COHERE_API_KEY",
     label: "Cohere",
   },
+  qwen: {
+    baseURL: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    envKey: "QWEN_CLOUD_API",
+    label: "Qwen Cloud",
+  },
+  huggingface: {
+    baseURL: "https://router.huggingface.co/v1",
+    envKey: "HUGGINGFACE_API_KEY",
+    label: "Hugging Face",
+  },
 };
+
+/** A vision-capable model used to OCR/describe attachments for text-only models. */
+export function resolveOcrModel(): LanguageModel | null {
+  const lovableKey = process.env.LOVABLE_API_KEY;
+  if (lovableKey) {
+    return createLovableAiGatewayProvider(lovableKey)("google/gemini-3.6-flash");
+  }
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey) {
+    return createOpenAICompatible({
+      name: "google",
+      baseURL: OPENAI_COMPATIBLE.google.baseURL,
+      headers: { Authorization: `Bearer ${geminiKey}` },
+    })("gemini-2.5-flash");
+  }
+  return null;
+}
+
 
 /**
  * Resolve a language model for any of the supported providers.

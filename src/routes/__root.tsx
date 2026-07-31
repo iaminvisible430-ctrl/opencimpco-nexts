@@ -79,19 +79,23 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { name: "theme-color", content: "#191a1d" },
-      { title: "Opencimpco Code — AI app builder with live preview" },
+      { title: "Opencimpco Code — AI coding, live preview, publish" },
       {
         name: "description",
         content:
-          "Opencimpco Code turns a prompt into a multi-file React or HTML app, previews it live on your phone, and publishes it to a shareable URL.",
+          "Mobile-first AI coding assistant with deep thinking, streaming responses, image attachments and live React / HTML preview.",
       },
-      { property: "og:title", content: "Opencimpco Code — AI app builder with live preview" },
+      { property: "og:title", content: "Opencimpco Code — AI coding, live preview, publish" },
       {
         property: "og:description",
-        content: "Prompt to multi-file app: planning, web research, live preview and one-tap publish.",
+        content: "Mobile-first AI coding assistant with deep thinking, streaming responses, image attachments and live React / HTML preview.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "Opencimpco Code — AI coding, live preview, publish" },
+      { name: "twitter:description", content: "Mobile-first AI coding assistant with deep thinking, streaming responses, image attachments and live React / HTML preview." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/26a7acc8-1224-46fb-ad92-73cac4c3ade1/id-preview-6e64cd6c--9fec0c52-0818-4021-b0d6-762c87f8411a.lovable.app-1785493961443.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/26a7acc8-1224-46fb-ad92-73cac4c3ade1/id-preview-6e64cd6c--9fec0c52-0818-4021-b0d6-762c87f8411a.lovable.app-1785493961443.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },

@@ -13,10 +13,10 @@ export const Route = createFileRoute("/")({
         content:
           "Mobile-first AI coding assistant with deep thinking, streaming responses, image attachments and live React / HTML preview.",
       },
-      { property: "og:title", content: "Opencimpco Code" },
+      { property: "og:title", content: "Opencimpco Code — AI coding, live preview, publish" },
       {
         property: "og:description",
-        content: "Build, preview and publish code with AI. Get 10,000 free credits on sign-up.",
+        content: "Mobile-first AI coding assistant with deep thinking, streaming responses, image attachments and live React / HTML preview.",
       },
     ],
   }),

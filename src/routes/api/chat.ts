@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
-import { streamText, tool, stepCountIs, type ModelMessage } from "ai";
+import { generateText, streamText, tool, stepCountIs, type ModelMessage } from "ai";
 import { z } from "zod";
 import { DEFAULT_MODEL_ID, getModel } from "@/lib/models";
 import { splitAttachments } from "@/lib/parse-thinking";

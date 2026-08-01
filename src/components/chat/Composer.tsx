@@ -1,7 +1,11 @@
-import { useRef } from "react";
-import { ArrowUp, ChevronDown, Paperclip, Square, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { ArrowUp, ChevronDown, FileCode2, Paperclip, Sparkles, Square, X } from "lucide-react";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
 import { getModel } from "@/lib/models";
+import { importFiles, type ImportedFile } from "@/lib/import-files";
+import { enhancePrompt } from "@/lib/enhance.functions";
+
 
 export function fileToDataUrl(file: File): Promise<string> {
   return new Promise((res, rej) => {

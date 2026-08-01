@@ -55,6 +55,31 @@ async function webSearch(query: string) {
   }
   return { results };
 }
+/** Fetch a page and return readable text so the agent can read docs it found. */
+async function fetchPage(url: string) {
+  try {
+    if (!/^https?:\/\//i.test(url)) return { error: "Only http(s) URLs are supported" };
+    const res = await fetch(url, {
+      headers: { "user-agent": "Mozilla/5.0 (compatible; OpencimpcoCode/1.0)" },
+    });
+    if (!res.ok) return { error: `Fetch failed (${res.status})` };
+    const html = await res.text();
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/\s+/g, " ")
+      .trim();
+    return { url, text: text.slice(0, 12_000) };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "fetch failed" };
+  }
+}
+
 
 export const Route = createFileRoute("/api/chat")({
   server: {

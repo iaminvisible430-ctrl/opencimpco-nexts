@@ -245,6 +245,9 @@ function ChatPage() {
                   onChange={setInput}
                   attachments={attachments}
                   onAttachments={setAttachments}
+                  sources={sources}
+                  onSources={setSources}
+                  projectFiles={project?.files.map((f) => f.path) ?? []}
                   modelId={modelId}
                   onOpenModels={() => setModelOpen(true)}
                   onSend={send}

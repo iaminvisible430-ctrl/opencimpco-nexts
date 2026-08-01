@@ -16,6 +16,7 @@ import { useChatStream } from "@/components/chat/useChatStream";
 import { PreviewPane } from "@/components/preview/PreviewPane";
 import { buildPreviewDoc, parseProjectFiles, projectKind, type PFile } from "@/lib/preview/build";
 import { analyzeProject } from "@/lib/preview/analyze";
+import { loadOverrides } from "@/lib/preview/overrides";
 import { buildProjectContext } from "@/lib/prompt";
 import { filesToBlocks, type ImportedFile } from "@/lib/import-files";
 import { parseThinking } from "@/lib/parse-thinking";
@@ -140,7 +141,7 @@ function ChatPage() {
     }
     // Manual editor edits win over anything the model wrote.
     const edits = loadOverrides(id);
-    for (const [path, code] of Object.entries(edits)) {
+    for (const [path, code] of Object.entries(edits) as [string, string][]) {
       const existing = merged.get(path);
       if (existing) merged.set(path, { ...existing, code });
     }

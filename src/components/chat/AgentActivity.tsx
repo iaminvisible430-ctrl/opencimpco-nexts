@@ -1,10 +1,11 @@
-import { Brain, Check, FileCode2, Globe, Loader2, ShieldCheck, Sparkles } from "lucide-react";
+import { BookOpen, Brain, Check, FileCode2, Globe, Loader2, ShieldCheck, Sparkles } from "lucide-react";
 import type { AgentStep } from "@/lib/agent-steps";
 import { cn } from "@/lib/utils";
 
 const ICONS = {
   plan: Brain,
   search: Globe,
+  read: BookOpen,
   file: FileCode2,
   selftest: ShieldCheck,
   verify: Sparkles,

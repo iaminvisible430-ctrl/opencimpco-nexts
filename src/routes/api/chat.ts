@@ -227,6 +227,12 @@ export const Route = createFileRoute("/api/chat")({
                       inputSchema: z.object({ query: z.string() }),
                       execute: async ({ query }) => webSearch(query),
                     }),
+                    fetch_page: tool({
+                      description:
+                        "Fetch a URL and return its readable text. Use it after web_search to read the actual documentation page before writing code.",
+                      inputSchema: z.object({ url: z.string() }),
+                      execute: async ({ url }) => fetchPage(url),
+                    }),
                   },
                 }
               : {}),
@@ -257,8 +263,10 @@ export const Route = createFileRoute("/api/chat")({
                     }
                     push(part.text);
                   } else if (part.type === "tool-call") {
-                    const q = (part.input as { query?: string })?.query ?? "";
-                    push(`\n\n[[oc:search:${q.replace(/[\]\n]/g, " ")}]]\n\n`);
+                    const input = part.input as { query?: string; url?: string };
+                    const label = input?.query ?? input?.url ?? "";
+                    const kind = part.toolName === "fetch_page" ? "read" : "search";
+                    push(`\n\n[[oc:${kind}:${label.replace(/[\]\n]/g, " ")}]]\n\n`);
                   } else if (part.type === "error") {
                     const err = part.error;
                     push(`\n\n[error] ${err instanceof Error ? err.message : String(err)}`);

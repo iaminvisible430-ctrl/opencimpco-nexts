@@ -15,9 +15,13 @@ import { Composer } from "@/components/chat/Composer";
 import { useChatStream } from "@/components/chat/useChatStream";
 import { PreviewPane } from "@/components/preview/PreviewPane";
 import { buildPreviewDoc, parseProjectFiles, projectKind, type PFile } from "@/lib/preview/build";
+import { analyzeProject } from "@/lib/preview/analyze";
+import { buildProjectContext } from "@/lib/prompt";
+import { filesToBlocks, type ImportedFile } from "@/lib/import-files";
 import { parseThinking } from "@/lib/parse-thinking";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+
 
 export const Route = createFileRoute("/_authenticated/chat/$id")({
   validateSearch: z.object({ auto: z.number().optional() }),

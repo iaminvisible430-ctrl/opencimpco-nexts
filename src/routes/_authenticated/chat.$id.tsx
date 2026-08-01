@@ -130,18 +130,32 @@ function ChatPage() {
   }, [data, streaming]);
 
   const project = useMemo(() => {
-    // Merge every assistant turn so earlier files stay in the project when a
-    // later message only re-emits the files it changed.
+    // Merge every turn so earlier files stay in the project when a later message
+    // only re-emits what changed. User turns are included so imported .zip /
+    // source files land in the preview, editor and terminal immediately.
     const merged = new Map<string, PFile>();
     for (const m of messages) {
-      if (m.role !== "assistant") continue;
       const { visible } = parseThinking(m.content);
       for (const f of parseProjectFiles(visible)) merged.set(f.path, f);
+    }
+    // Manual editor edits win over anything the model wrote.
+    const edits = loadOverrides(id);
+    for (const [path, code] of Object.entries(edits)) {
+      const existing = merged.get(path);
+      if (existing) merged.set(path, { ...existing, code });
     }
     const files = [...merged.values()];
     if (!files.length) return null;
     return { files, kind: projectKind(files) };
-  }, [messages]);
+  }, [messages, id]);
+
+  const issues = useMemo(() => (project ? analyzeProject(project.files) : []), [project]);
+
+  // Keep the request context fresh without re-creating send()/run() callbacks.
+  useEffect(() => {
+    contextRef.current = project ? buildProjectContext(project.files, issues, []) : "";
+  }, [project, issues]);
+
 
   const publish = useMutation({
     mutationFn: async () => {

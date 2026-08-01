@@ -13,6 +13,8 @@ import { SYSTEM_PROMPT } from "@/lib/prompt";
 const Body = z.object({
   chatId: z.string().uuid(),
   model: z.string().default(DEFAULT_MODEL_ID),
+  /** Live project files + detected issues, injected so edits are surgical. */
+  context: z.string().max(120_000).optional(),
 });
 
 
@@ -179,7 +181,7 @@ export const Route = createFileRoute("/api/chat")({
 
           const result = streamText({
             model: languageModel,
-            system: SYSTEM_PROMPT,
+            system: body.context ? `${SYSTEM_PROMPT}\n\n${body.context}` : SYSTEM_PROMPT,
             messages,
             stopWhen: stepCountIs(model.tools ? 50 : 1),
             // Third-party providers default to huge budgets that some accounts cannot afford,

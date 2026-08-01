@@ -59,7 +59,10 @@ ${designPlaybook()}
 
 ## Tools
 
-- \`web_search\`: use it whenever the request depends on current facts, recent library APIs, pricing, docs or news. Search first, then build, and mention what you learned in one line.`;
+- \`web_search\`: use it whenever the request depends on current facts, recent library APIs, pricing, docs or news.
+- \`fetch_page\`: after a search, open the most promising URL and read the real page before writing code against an API you are unsure about.
+- Search/read first, then build, and mention in one line what you learned.`;
+
 
 function designPlaybook() {
   return `## Design system rules (non-negotiable quality bar)

@@ -15,9 +15,14 @@ import { Composer } from "@/components/chat/Composer";
 import { useChatStream } from "@/components/chat/useChatStream";
 import { PreviewPane } from "@/components/preview/PreviewPane";
 import { buildPreviewDoc, parseProjectFiles, projectKind, type PFile } from "@/lib/preview/build";
+import { analyzeProject } from "@/lib/preview/analyze";
+import { loadOverrides } from "@/lib/preview/overrides";
+import { buildProjectContext } from "@/lib/prompt";
+import { filesToBlocks, type ImportedFile } from "@/lib/import-files";
 import { parseThinking } from "@/lib/parse-thinking";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+
 
 export const Route = createFileRoute("/_authenticated/chat/$id")({
   validateSearch: z.object({ auto: z.number().optional() }),
@@ -51,11 +56,15 @@ function ChatPage() {
 
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
+  const [sources, setSources] = useState<ImportedFile[]>([]);
   const [modelId, setModelId] = useState<CodexModelId>(DEFAULT_MODEL_ID);
   const [modelOpen, setModelOpen] = useState(false);
   const [tab, setTab] = useState<"chat" | "preview">("chat");
   const scroller = useRef<HTMLDivElement>(null);
   const autoRan = useRef(false);
+  // Latest project snapshot + issues, sent with each request so the model edits
+  // instead of regenerating.
+  const contextRef = useRef("");
 
   const onDone = useCallback(async () => {
     await Promise.all([
@@ -78,7 +87,7 @@ function ChatPage() {
     const last = data.messages[data.messages.length - 1];
     if (last?.role === "user") {
       autoRan.current = true;
-      run((data.chat.model as CodexModelId) || DEFAULT_MODEL_ID);
+      run((data.chat.model as CodexModelId) || DEFAULT_MODEL_ID, contextRef.current);
       nav({ to: "/chat/$id", params: { id }, search: {}, replace: true });
     }
   }, [auto, data, id, nav, run]);
@@ -90,7 +99,9 @@ function ChatPage() {
       const { data: sess } = await supabase.auth.getSession();
       if (!sess.session) throw new Error("Session expired");
       const persisted =
-        content + (attachments.length ? "\n" + attachments.map((a) => `[[img:${a}]]`).join("\n") : "");
+        content +
+        filesToBlocks(sources) +
+        (attachments.length ? "\n" + attachments.map((a) => `[[img:${a}]]`).join("\n") : "");
       const { error: insertError } = await supabase.from("messages").insert({
         chat_id: id,
         user_id: sess.session.user.id,
@@ -100,13 +111,15 @@ function ChatPage() {
       if (insertError) throw insertError;
       setInput("");
       setAttachments([]);
+      setSources([]);
       setTab("chat");
       await qc.invalidateQueries({ queryKey: ["chat", id] });
-      await run(modelId);
+      await run(modelId, contextRef.current);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "failed to send");
     }
   }
+
 
   const messages: ChatMessage[] = useMemo(() => {
     const base = (data?.messages ?? []) as ChatMessage[];
@@ -118,18 +131,32 @@ function ChatPage() {
   }, [data, streaming]);
 
   const project = useMemo(() => {
-    // Merge every assistant turn so earlier files stay in the project when a
-    // later message only re-emits the files it changed.
+    // Merge every turn so earlier files stay in the project when a later message
+    // only re-emits what changed. User turns are included so imported .zip /
+    // source files land in the preview, editor and terminal immediately.
     const merged = new Map<string, PFile>();
     for (const m of messages) {
-      if (m.role !== "assistant") continue;
       const { visible } = parseThinking(m.content);
       for (const f of parseProjectFiles(visible)) merged.set(f.path, f);
+    }
+    // Manual editor edits win over anything the model wrote.
+    const edits = loadOverrides(id);
+    for (const [path, code] of Object.entries(edits) as [string, string][]) {
+      const existing = merged.get(path);
+      if (existing) merged.set(path, { ...existing, code });
     }
     const files = [...merged.values()];
     if (!files.length) return null;
     return { files, kind: projectKind(files) };
-  }, [messages]);
+  }, [messages, id]);
+
+  const issues = useMemo(() => (project ? analyzeProject(project.files) : []), [project]);
+
+  // Keep the request context fresh without re-creating send()/run() callbacks.
+  useEffect(() => {
+    contextRef.current = project ? buildProjectContext(project.files, issues, []) : "";
+  }, [project, issues]);
+
 
   const publish = useMutation({
     mutationFn: async () => {
@@ -218,6 +245,9 @@ function ChatPage() {
                   onChange={setInput}
                   attachments={attachments}
                   onAttachments={setAttachments}
+                  sources={sources}
+                  onSources={setSources}
+                  projectFiles={project?.files.map((f) => f.path) ?? []}
                   modelId={modelId}
                   onOpenModels={() => setModelOpen(true)}
                   onSend={send}

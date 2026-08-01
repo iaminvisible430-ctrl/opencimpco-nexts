@@ -9,6 +9,7 @@ import { createChat } from "@/lib/chats.functions";
 import { DEFAULT_MODEL_ID, type CodexModelId } from "@/lib/models";
 import { ModelSheet } from "@/components/ModelSheet";
 import { Composer } from "@/components/chat/Composer";
+import { filesToBlocks, type ImportedFile } from "@/lib/import-files";
 
 export const Route = createFileRoute("/_authenticated/home")({
   head: () => ({
@@ -71,6 +72,7 @@ function HomePage() {
 
   const [prompt, setPrompt] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
+  const [sources, setSources] = useState<ImportedFile[]>([]);
   const [modelId, setModelId] = useState<CodexModelId>(DEFAULT_MODEL_ID);
   const [modelOpen, setModelOpen] = useState(false);
   const countdown = useCountdown(profile?.last_daily_claim);
@@ -86,7 +88,8 @@ function HomePage() {
   });
 
   const create = useMutation({
-    mutationFn: (content: string) => createFn({ data: { content, model: modelId, attachments } }),
+    mutationFn: (content: string) =>
+      createFn({ data: { content: content + filesToBlocks(sources), model: modelId, attachments } }),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["chats"] });
       nav({ to: "/chat/$id", params: { id: r.chatId }, search: { auto: 1 } });
@@ -118,6 +121,8 @@ function HomePage() {
         onChange={setPrompt}
         attachments={attachments}
         onAttachments={setAttachments}
+        sources={sources}
+        onSources={setSources}
         modelId={modelId}
         onOpenModels={() => setModelOpen(true)}
         onSend={() => prompt.trim() && create.mutate(prompt.trim())}

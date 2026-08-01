@@ -11,7 +11,7 @@ export function useChatStream(chatId: string, onDone: () => void | Promise<void>
   const stop = useCallback(() => abort.current?.abort(), []);
 
   const run = useCallback(
-    async (model: string) => {
+    async (model: string, context?: string) => {
       if (running.current) return;
       running.current = true;
       setError(null);
@@ -27,7 +27,7 @@ export function useChatStream(chatId: string, onDone: () => void | Promise<void>
           method: "POST",
           signal: controller.signal,
           headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify({ chatId, model }),
+          body: JSON.stringify({ chatId, model, context }),
         });
         if (!res.ok || !res.body) throw new Error((await res.text()) || `Stream failed (${res.status})`);
 

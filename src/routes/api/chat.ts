@@ -13,6 +13,8 @@ import { SYSTEM_PROMPT } from "@/lib/prompt";
 const Body = z.object({
   chatId: z.string().uuid(),
   model: z.string().default(DEFAULT_MODEL_ID),
+  /** Live project files + detected issues, injected so edits are surgical. */
+  context: z.string().max(120_000).optional(),
 });
 
 
@@ -53,6 +55,31 @@ async function webSearch(query: string) {
   }
   return { results };
 }
+/** Fetch a page and return readable text so the agent can read docs it found. */
+async function fetchPage(url: string) {
+  try {
+    if (!/^https?:\/\//i.test(url)) return { error: "Only http(s) URLs are supported" };
+    const res = await fetch(url, {
+      headers: { "user-agent": "Mozilla/5.0 (compatible; OpencimpcoCode/1.0)" },
+    });
+    if (!res.ok) return { error: `Fetch failed (${res.status})` };
+    const html = await res.text();
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/\s+/g, " ")
+      .trim();
+    return { url, text: text.slice(0, 12_000) };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "fetch failed" };
+  }
+}
+
 
 export const Route = createFileRoute("/api/chat")({
   server: {
@@ -179,7 +206,7 @@ export const Route = createFileRoute("/api/chat")({
 
           const result = streamText({
             model: languageModel,
-            system: SYSTEM_PROMPT,
+            system: body.context ? `${SYSTEM_PROMPT}\n\n${body.context}` : SYSTEM_PROMPT,
             messages,
             stopWhen: stepCountIs(model.tools ? 50 : 1),
             // Third-party providers default to huge budgets that some accounts cannot afford,
@@ -199,6 +226,12 @@ export const Route = createFileRoute("/api/chat")({
                         "Search the live web for current documentation, APIs, news or facts. Returns up to 5 results with title, snippet and URL.",
                       inputSchema: z.object({ query: z.string() }),
                       execute: async ({ query }) => webSearch(query),
+                    }),
+                    fetch_page: tool({
+                      description:
+                        "Fetch a URL and return its readable text. Use it after web_search to read the actual documentation page before writing code.",
+                      inputSchema: z.object({ url: z.string() }),
+                      execute: async ({ url }) => fetchPage(url),
                     }),
                   },
                 }
@@ -230,8 +263,10 @@ export const Route = createFileRoute("/api/chat")({
                     }
                     push(part.text);
                   } else if (part.type === "tool-call") {
-                    const q = (part.input as { query?: string })?.query ?? "";
-                    push(`\n\n[[oc:search:${q.replace(/[\]\n]/g, " ")}]]\n\n`);
+                    const input = part.input as { query?: string; url?: string };
+                    const label = input?.query ?? input?.url ?? "";
+                    const kind = part.toolName === "fetch_page" ? "read" : "search";
+                    push(`\n\n[[oc:${kind}:${label.replace(/[\]\n]/g, " ")}]]\n\n`);
                   } else if (part.type === "error") {
                     const err = part.error;
                     push(`\n\n[error] ${err instanceof Error ? err.message : String(err)}`);

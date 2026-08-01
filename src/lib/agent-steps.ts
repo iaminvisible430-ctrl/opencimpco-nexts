@@ -1,4 +1,4 @@
-export type StepKind = "plan" | "search" | "file" | "selftest" | "verify";
+export type StepKind = "plan" | "search" | "read" | "file" | "selftest" | "verify";
 export type StepState = "active" | "done";
 
 export type AgentStep = {
@@ -10,10 +10,11 @@ export type AgentStep = {
 };
 
 const SEARCH = /\[\[oc:search:([^\]]*)\]\]/g;
+const READ = /\[\[oc:read:([^\]]*)\]\]/g;
 
 /** Strip the machine-readable activity markers out of displayable text. */
 export function stripMarkers(text: string): string {
-  return text.replace(SEARCH, "").replace(/\n{3,}/g, "\n\n");
+  return text.replace(SEARCH, "").replace(READ, "").replace(/\n{3,}/g, "\n\n");
 }
 
 const FENCE_OPEN = /```([^\n`]*)\n/g;
@@ -49,6 +50,17 @@ export function deriveSteps(raw: string, streaming: boolean): AgentStep[] {
       kind: "search",
       label: "Searching the web",
       detail: q,
+      state: "done",
+    });
+  });
+
+  const reads = [...raw.matchAll(new RegExp(READ))].map((m) => m[1]);
+  reads.forEach((url, i) => {
+    steps.push({
+      id: `read-${i}`,
+      kind: "read",
+      label: "Reading documentation",
+      detail: url,
       state: "done",
     });
   });

@@ -55,11 +55,15 @@ function ChatPage() {
 
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
+  const [sources, setSources] = useState<ImportedFile[]>([]);
   const [modelId, setModelId] = useState<CodexModelId>(DEFAULT_MODEL_ID);
   const [modelOpen, setModelOpen] = useState(false);
   const [tab, setTab] = useState<"chat" | "preview">("chat");
   const scroller = useRef<HTMLDivElement>(null);
   const autoRan = useRef(false);
+  // Latest project snapshot + issues, sent with each request so the model edits
+  // instead of regenerating.
+  const contextRef = useRef("");
 
   const onDone = useCallback(async () => {
     await Promise.all([
@@ -82,7 +86,7 @@ function ChatPage() {
     const last = data.messages[data.messages.length - 1];
     if (last?.role === "user") {
       autoRan.current = true;
-      run((data.chat.model as CodexModelId) || DEFAULT_MODEL_ID);
+      run((data.chat.model as CodexModelId) || DEFAULT_MODEL_ID, contextRef.current);
       nav({ to: "/chat/$id", params: { id }, search: {}, replace: true });
     }
   }, [auto, data, id, nav, run]);
@@ -94,7 +98,9 @@ function ChatPage() {
       const { data: sess } = await supabase.auth.getSession();
       if (!sess.session) throw new Error("Session expired");
       const persisted =
-        content + (attachments.length ? "\n" + attachments.map((a) => `[[img:${a}]]`).join("\n") : "");
+        content +
+        filesToBlocks(sources) +
+        (attachments.length ? "\n" + attachments.map((a) => `[[img:${a}]]`).join("\n") : "");
       const { error: insertError } = await supabase.from("messages").insert({
         chat_id: id,
         user_id: sess.session.user.id,
@@ -104,13 +110,15 @@ function ChatPage() {
       if (insertError) throw insertError;
       setInput("");
       setAttachments([]);
+      setSources([]);
       setTab("chat");
       await qc.invalidateQueries({ queryKey: ["chat", id] });
-      await run(modelId);
+      await run(modelId, contextRef.current);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "failed to send");
     }
   }
+
 
   const messages: ChatMessage[] = useMemo(() => {
     const base = (data?.messages ?? []) as ChatMessage[];

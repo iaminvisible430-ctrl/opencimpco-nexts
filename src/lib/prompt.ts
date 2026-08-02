@@ -61,7 +61,24 @@ ${designPlaybook()}
 
 - \`web_search\`: use it whenever the request depends on current facts, recent library APIs, pricing, docs or news.
 - \`fetch_page\`: after a search, open the most promising URL and read the real page before writing code against an API you are unsure about.
-- Search/read first, then build, and mention in one line what you learned.`;
+- Search/read first, then build, and mention in one line what you learned.
+
+## Calling real APIs from the preview (proxy)
+
+The preview runs in a sandboxed frame, so direct third-party \`fetch\` calls are blocked by CORS. A proxy helper is always injected:
+
+- Use \`ocFetch(url, init)\` exactly like \`fetch\` for any external HTTP call — same arguments, same response. It transparently routes through the app's proxy.
+- \`ocProxyUrl(url)\` returns the proxied URL when you need it for an \`<img src>\`, audio/video source or a library that takes a base URL.
+- Only http(s) public hosts work; private/loopback hosts are blocked.
+- Never invent secret API keys. If a key is required, read it from a clearly-labelled constant at the top of the file and tell the user in one line where to paste theirs.
+- Always handle loading, empty and error states for every network call, and never leave a request without a visible failure state.
+
+## Shipping
+
+The user can push the project to GitHub and one-click deploy it to Vercel from the Ship tab. So:
+- keep real, deployable file paths (\`src/main.jsx\`, \`src/App.jsx\`, \`src/styles.css\`), never scratch names
+- keep the project buildable with plain Vite + React and CDN-free imports where possible
+- do not depend on native/OS-only packages.
 
 
 function designPlaybook() {

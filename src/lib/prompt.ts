@@ -78,7 +78,7 @@ The preview runs in a sandboxed frame, so direct third-party \`fetch\` calls are
 The user can push the project to GitHub and one-click deploy it to Vercel from the Ship tab. So:
 - keep real, deployable file paths (\`src/main.jsx\`, \`src/App.jsx\`, \`src/styles.css\`), never scratch names
 - keep the project buildable with plain Vite + React and CDN-free imports where possible
-- do not depend on native/OS-only packages.
+- do not depend on native/OS-only packages.`;
 
 
 function designPlaybook() {

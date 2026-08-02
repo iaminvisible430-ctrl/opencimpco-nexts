@@ -8,6 +8,7 @@ import {
   FileCode2,
   Monitor,
   RotateCw,
+  Rocket,
   Smartphone,
   Terminal,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import { buildPreviewDoc, projectKind, type PFile } from "@/lib/preview/build";
 import { analyzeProject } from "@/lib/preview/analyze";
 import { CodeEditor } from "./CodeEditor";
 import { TerminalPane } from "./TerminalPane";
+import { ShipPanel } from "./ShipPanel";
 import { cn } from "@/lib/utils";
 
 type LogLine = { level: string; text: string };
@@ -25,14 +27,18 @@ export function PreviewPane({
   files,
   className,
   defaultDevice = "desktop",
+  projectName,
 }: {
   files: PFile[];
   className?: string;
   defaultDevice?: "mobile" | "desktop";
+  projectName?: string;
 }) {
   const [device, setDevice] = useState<"mobile" | "desktop">(defaultDevice);
   const runnable = projectKind(files) !== null;
-  const [view, setView] = useState<"app" | "editor" | "console" | "terminal">(runnable ? "app" : "editor");
+  const [view, setView] = useState<"app" | "editor" | "console" | "terminal" | "ship">(
+    runnable ? "app" : "editor",
+  );
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [nonce, setNonce] = useState(0);
   const [status, setStatus] = useState<Status>("loading");

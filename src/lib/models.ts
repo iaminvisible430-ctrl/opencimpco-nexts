@@ -7,7 +7,9 @@ export type ProviderKey =
   | "google"
   | "cohere"
   | "qwen"
-  | "huggingface";
+  | "huggingface"
+  | "bazaarlink"
+  | "cloudflare";
 
 /** Model ids are stored as plain text in the DB, so keep this a string union-ish alias. */
 export type CodexModelId = string;

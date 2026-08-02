@@ -412,16 +412,16 @@ export const CODEX_MODELS: CodexModel[] = [
 
   // ---------- Vision + Cloudflare edge ----------
   {
-    id: "groq-llama4-scout",
-    name: "Llama 4 Scout Vision",
-    tagline: "Groq vision model — screenshots and mockups to code, instantly",
-    tags: ["Vision", "Fastest", "Screenshot → UI"],
+    id: "qwen36-groq",
+    name: "Qwen 3.6 27B (Groq)",
+    tagline: "Groq-hosted Qwen 3.6 — instant everyday coding",
+    tags: ["Fastest", "Quick fixes", "Tools"],
     cost: 70,
     providerKey: "groq",
-    provider: "meta-llama/llama-4-scout-17b-16e-instruct",
+    provider: "qwen/qwen3.6-27b",
     thinking: true,
     tools: true,
-    vision: true,
+    vision: false,
     group: "Fast",
     speed: "fast",
   },

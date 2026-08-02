@@ -274,6 +274,7 @@ export function buildPreviewDoc(files: PFile[]): string {
 window.__FILES__ = ${esc(JSON.stringify(map))};
 window.__ENTRY__ = ${JSON.stringify(entry)};
 <\/script>
+<script>${esc(proxyShim())}<\/script>
 <script>${esc(RUNTIME)}<\/script>
 </body></html>`;
 }

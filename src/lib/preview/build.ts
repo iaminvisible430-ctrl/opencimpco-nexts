@@ -236,7 +236,7 @@ export function buildPreviewDoc(files: PFile[]): string {
     const html = runnable.find((f) => f.lang === "html");
     const css = runnable.filter((f) => f.lang === "css").map((f) => f.code).join("\n");
     const js = runnable.filter((f) => f.lang === "js").map((f) => f.code).join("\n;\n");
-    const bridge = `<script>${esc(HTML_BRIDGE)}<\/script>`;
+    const bridge = `<script>${esc(proxyShim())}<\/script><script>${esc(HTML_BRIDGE)}<\/script>`;
     if (html && /<html[\s>]/i.test(html.code)) {
       let doc = html.code;
       if (css) doc = doc.replace(/<\/head>/i, `<style>${css}</style></head>`);

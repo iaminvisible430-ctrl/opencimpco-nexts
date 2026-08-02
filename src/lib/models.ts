@@ -7,7 +7,9 @@ export type ProviderKey =
   | "google"
   | "cohere"
   | "qwen"
-  | "huggingface";
+  | "huggingface"
+  | "bazaarlink"
+  | "cloudflare";
 
 /** Model ids are stored as plain text in the DB, so keep this a string union-ish alias. */
 export type CodexModelId = string;
@@ -334,6 +336,122 @@ export const CODEX_MODELS: CodexModel[] = [
     vision: false,
     group: "Open source",
     speed: "balanced",
+  },
+
+  // ---------- Bazaarlink (frontier, verified live) ----------
+  {
+    id: "bl-deepseek-v4-pro",
+    name: "DeepSeek V4 Pro",
+    tagline: "Bazaarlink frontier reasoning — deep multi-file engineering",
+    tags: ["Frontier", "Reasoning", "Multi-file"],
+    cost: 260,
+    providerKey: "bazaarlink",
+    provider: "deepseek-v4-pro",
+    thinking: true,
+    tools: true,
+    vision: false,
+    group: "Flagship",
+    speed: "deep",
+  },
+  {
+    id: "bl-qwen37-max",
+    name: "Qwen 3.7 Max",
+    tagline: "Bazaarlink's largest Qwen — architecture and long context",
+    tags: ["Long context", "Architecture", "Code"],
+    cost: 220,
+    providerKey: "bazaarlink",
+    provider: "qwen3.7-max",
+    thinking: true,
+    tools: true,
+    vision: false,
+    group: "Flagship",
+    speed: "deep",
+  },
+  {
+    id: "bl-grok-build",
+    name: "Grok Build",
+    tagline: "Build-tuned Grok — great at shipping whole apps",
+    tags: ["App builder", "Agentic", "Fast"],
+    cost: 180,
+    providerKey: "bazaarlink",
+    provider: "grok-build-0.1",
+    thinking: true,
+    tools: true,
+    vision: false,
+    group: "Flagship",
+    speed: "balanced",
+  },
+  {
+    id: "bl-kimi-k27-code",
+    name: "Kimi K2.7 Code",
+    tagline: "Code-specialised Kimi — surgical diffs and refactors",
+    tags: ["Code", "Diffs", "Refactors"],
+    cost: 150,
+    providerKey: "bazaarlink",
+    provider: "kimi-k2.7-code",
+    thinking: true,
+    tools: true,
+    vision: false,
+    group: "Coding",
+    speed: "balanced",
+  },
+  {
+    id: "bl-glm-52",
+    name: "GLM 5.2",
+    tagline: "Zhipu GLM 5.2 — strong agentic front-end work",
+    tags: ["Agentic", "UI", "Long context"],
+    cost: 140,
+    providerKey: "bazaarlink",
+    provider: "glm-5.2",
+    thinking: true,
+    tools: true,
+    vision: false,
+    group: "Coding",
+    speed: "balanced",
+  },
+
+  // ---------- Vision + Cloudflare edge ----------
+  {
+    id: "groq-llama4-scout",
+    name: "Llama 4 Scout Vision",
+    tagline: "Groq vision model — screenshots and mockups to code, instantly",
+    tags: ["Vision", "Fastest", "Screenshot → UI"],
+    cost: 70,
+    providerKey: "groq",
+    provider: "meta-llama/llama-4-scout-17b-16e-instruct",
+    thinking: true,
+    tools: true,
+    vision: true,
+    group: "Fast",
+    speed: "fast",
+  },
+  {
+    id: "cf-llama4-scout",
+    name: "Llama 4 Scout (Edge)",
+    tagline: "Cloudflare Workers AI — vision on the edge",
+    tags: ["Vision", "Edge", "Cheap"],
+    cost: 60,
+    providerKey: "cloudflare",
+    provider: "@cf/meta/llama-4-scout-17b-16e-instruct",
+    thinking: true,
+    tools: true,
+    vision: true,
+    group: "Open source",
+    speed: "fast",
+  },
+  {
+    id: "cf-llama33-70b",
+    name: "Llama 3.3 70B (Edge)",
+    tagline: "Cloudflare fp8-fast Llama 3.3 — reliable everyday coding",
+    tags: ["Edge", "Fast", "General"],
+    cost: 60,
+    providerKey: "cloudflare",
+    provider: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    thinking: true,
+    tools: true,
+    vision: false,
+    group: "Open source",
+    speed: "fast",
   },
 ];
 

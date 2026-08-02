@@ -32,6 +32,27 @@ function esc(s: string) {
   return s.replace(/<\/script/gi, "<\\/script");
 }
 
+/**
+ * Preview iframes have an opaque origin, so any third-party API call from a
+ * generated app is blocked by CORS. `ocFetch` routes through our proxy route so
+ * agents can build apps with real API connections.
+ */
+function proxyShim(): string {
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  return `(function(){
+  var BASE = ${JSON.stringify(`${origin}/api/public/proxy?url=`)};
+  function viaProxy(url){
+    try {
+      var u = String(url);
+      if (!/^https?:\\/\\//i.test(u)) return u;
+      return BASE + encodeURIComponent(u);
+    } catch (e) { return url; }
+  }
+  window.ocProxyUrl = viaProxy;
+  window.ocFetch = function(url, init){ return fetch(viaProxy(url), init); };
+})();`;
+}
+
 const RUNTIME = String.raw`
 (function () {
   var FILES = window.__FILES__;
@@ -215,7 +236,7 @@ export function buildPreviewDoc(files: PFile[]): string {
     const html = runnable.find((f) => f.lang === "html");
     const css = runnable.filter((f) => f.lang === "css").map((f) => f.code).join("\n");
     const js = runnable.filter((f) => f.lang === "js").map((f) => f.code).join("\n;\n");
-    const bridge = `<script>${esc(HTML_BRIDGE)}<\/script>`;
+    const bridge = `<script>${esc(proxyShim())}<\/script><script>${esc(HTML_BRIDGE)}<\/script>`;
     if (html && /<html[\s>]/i.test(html.code)) {
       let doc = html.code;
       if (css) doc = doc.replace(/<\/head>/i, `<style>${css}</style></head>`);
@@ -253,6 +274,7 @@ export function buildPreviewDoc(files: PFile[]): string {
 window.__FILES__ = ${esc(JSON.stringify(map))};
 window.__ENTRY__ = ${JSON.stringify(entry)};
 <\/script>
+<script>${esc(proxyShim())}<\/script>
 <script>${esc(RUNTIME)}<\/script>
 </body></html>`;
 }

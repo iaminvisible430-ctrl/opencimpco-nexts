@@ -32,6 +32,27 @@ function esc(s: string) {
   return s.replace(/<\/script/gi, "<\\/script");
 }
 
+/**
+ * Preview iframes have an opaque origin, so any third-party API call from a
+ * generated app is blocked by CORS. `ocFetch` routes through our proxy route so
+ * agents can build apps with real API connections.
+ */
+function proxyShim(): string {
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  return `(function(){
+  var BASE = ${JSON.stringify(`${origin}/api/public/proxy?url=`)};
+  function viaProxy(url){
+    try {
+      var u = String(url);
+      if (!/^https?:\\/\\//i.test(u)) return u;
+      return BASE + encodeURIComponent(u);
+    } catch (e) { return url; }
+  }
+  window.ocProxyUrl = viaProxy;
+  window.ocFetch = function(url, init){ return fetch(viaProxy(url), init); };
+})();`;
+}
+
 const RUNTIME = String.raw`
 (function () {
   var FILES = window.__FILES__;

@@ -80,18 +80,19 @@ function compat(providerKey: Exclude<ProviderKey, "lovable" | "cloudflare">, mod
 
 /**
  * A vision-capable model used to OCR/describe attachments for text-only models.
- * Groq's Llama 4 Scout is first: it is fast, cheap and always available on our key,
- * so every text-only model in the catalog still "sees" screenshots and mockups.
+ * Cloudflare's Llama 4 Scout leads the pipeline: it is fast, cheap and available
+ * on our account, so every text-only model in the catalog still "sees"
+ * screenshots and mockups.
  */
 export function resolveOcrModel(): LanguageModel | null {
   const candidates: Array<() => LanguageModel> = [
-    () => compat("groq", "meta-llama/llama-4-scout-17b-16e-instruct"),
+    () => cloudflareProvider()("@cf/meta/llama-4-scout-17b-16e-instruct"),
     () => {
       const lovableKey = process.env.LOVABLE_API_KEY;
       if (!lovableKey) throw new Error("no lovable key");
       return createLovableAiGatewayProvider(lovableKey)("google/gemini-3.6-flash");
     },
-    () => cloudflareProvider()("@cf/meta/llama-4-scout-17b-16e-instruct"),
+    () => compat("mistral", "mistral-medium-latest"),
     () => compat("google", "gemini-2.5-flash"),
   ];
   for (const make of candidates) {

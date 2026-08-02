@@ -181,6 +181,8 @@ export function PreviewPane({
 
       {view === "terminal" && <TerminalPane files={merged} />}
 
+      {view === "ship" && <ShipPanel files={merged} suggestedName={projectName} />}
+
       {view === "console" && (
         <div className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11px] leading-5">
           {issues.map((i, k) => (

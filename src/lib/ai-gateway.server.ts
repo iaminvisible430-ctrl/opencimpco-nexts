@@ -14,7 +14,7 @@ export function createLovableAiGatewayProvider(lovableApiKey: string) {
 }
 
 const OPENAI_COMPATIBLE: Record<
-  Exclude<ProviderKey, "lovable">,
+  Exclude<ProviderKey, "lovable" | "cloudflare">,
   { baseURL: string; envKey: string; label: string; extraHeaders?: Record<string, string> }
 > = {
   openrouter: {
@@ -46,25 +46,63 @@ const OPENAI_COMPATIBLE: Record<
     envKey: "HUGGINGFACE_API_KEY",
     label: "Hugging Face",
   },
+  bazaarlink: {
+    baseURL: "https://api.bazaarlink.ai/v1",
+    envKey: "BAZARLINK_API_KEY",
+    label: "Bazaarlink",
+  },
 };
 
-/** A vision-capable model used to OCR/describe attachments for text-only models. */
-export function resolveOcrModel(): LanguageModel | null {
-  const lovableKey = process.env.LOVABLE_API_KEY;
-  if (lovableKey) {
-    return createLovableAiGatewayProvider(lovableKey)("google/gemini-3.6-flash");
+/** Cloudflare Workers AI is account-scoped, so its base URL is built at call time. */
+function cloudflareProvider() {
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+  if (!token || !account) {
+    throw new Error("Missing CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID — Cloudflare AI is not configured.");
   }
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (geminiKey) {
-    return createOpenAICompatible({
-      name: "google",
-      baseURL: OPENAI_COMPATIBLE.google.baseURL,
-      headers: { Authorization: `Bearer ${geminiKey}` },
-    })("gemini-2.5-flash");
+  return createOpenAICompatible({
+    name: "cloudflare",
+    baseURL: `https://api.cloudflare.com/client/v4/accounts/${account}/ai/v1`,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+function compat(providerKey: Exclude<ProviderKey, "lovable" | "cloudflare">, model: string) {
+  const cfg = OPENAI_COMPATIBLE[providerKey];
+  const key = process.env[cfg.envKey];
+  if (!key) throw new Error(`Missing ${cfg.envKey} — ${cfg.label} is not configured.`);
+  return createOpenAICompatible({
+    name: providerKey,
+    baseURL: cfg.baseURL,
+    headers: { Authorization: `Bearer ${key}`, ...(cfg.extraHeaders ?? {}) },
+  })(model);
+}
+
+/**
+ * A vision-capable model used to OCR/describe attachments for text-only models.
+ * Groq's Llama 4 Scout is first: it is fast, cheap and always available on our key,
+ * so every text-only model in the catalog still "sees" screenshots and mockups.
+ */
+export function resolveOcrModel(): LanguageModel | null {
+  const candidates: Array<() => LanguageModel> = [
+    () => compat("groq", "meta-llama/llama-4-scout-17b-16e-instruct"),
+    () => {
+      const lovableKey = process.env.LOVABLE_API_KEY;
+      if (!lovableKey) throw new Error("no lovable key");
+      return createLovableAiGatewayProvider(lovableKey)("google/gemini-3.6-flash");
+    },
+    () => cloudflareProvider()("@cf/meta/llama-4-scout-17b-16e-instruct"),
+    () => compat("google", "gemini-2.5-flash"),
+  ];
+  for (const make of candidates) {
+    try {
+      return make();
+    } catch {
+      // try the next provider in the pipeline
+    }
   }
   return null;
 }
-
 
 /**
  * Resolve a language model for any of the supported providers.
@@ -76,14 +114,8 @@ export function resolveModel(model: CodexModel): LanguageModel {
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
     return createLovableAiGatewayProvider(key)(model.provider);
   }
-
-  const cfg = OPENAI_COMPATIBLE[model.providerKey];
-  const key = process.env[cfg.envKey];
-  if (!key) throw new Error(`Missing ${cfg.envKey} — ${cfg.label} is not configured.`);
-
-  return createOpenAICompatible({
-    name: model.providerKey,
-    baseURL: cfg.baseURL,
-    headers: { Authorization: `Bearer ${key}`, ...(cfg.extraHeaders ?? {}) },
-  })(model.provider);
+  if (model.providerKey === "cloudflare") {
+    return cloudflareProvider()(model.provider);
+  }
+  return compat(model.providerKey, model.provider);
 }

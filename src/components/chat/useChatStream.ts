@@ -11,7 +11,11 @@ export function useChatStream(chatId: string, onDone: () => void | Promise<void>
   const stop = useCallback(() => abort.current?.abort(), []);
 
   const run = useCallback(
-    async (model: string, context?: string) => {
+    async (
+      model: string,
+      context?: string,
+      files?: { path: string; lang: string; code: string }[],
+    ) => {
       if (running.current) return;
       running.current = true;
       setError(null);
@@ -27,8 +31,9 @@ export function useChatStream(chatId: string, onDone: () => void | Promise<void>
           method: "POST",
           signal: controller.signal,
           headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify({ chatId, model, context }),
+          body: JSON.stringify({ chatId, model, context, files }),
         });
+
         if (!res.ok || !res.body) throw new Error((await res.text()) || `Stream failed (${res.status})`);
 
         const reader = res.body.getReader();

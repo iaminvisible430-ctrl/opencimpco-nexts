@@ -91,7 +91,7 @@ function ChatPage() {
     const last = data.messages[data.messages.length - 1];
     if (last?.role === "user") {
       autoRan.current = true;
-      run((data.chat.model as CodexModelId) || DEFAULT_MODEL_ID, contextRef.current);
+      run((data.chat.model as CodexModelId) || DEFAULT_MODEL_ID, contextRef.current, filesRef.current);
       nav({ to: "/chat/$id", params: { id }, search: {}, replace: true });
     }
   }, [auto, data, id, nav, run]);
@@ -118,7 +118,7 @@ function ChatPage() {
       setSources([]);
       setTab("chat");
       await qc.invalidateQueries({ queryKey: ["chat", id] });
-      await run(modelId, contextRef.current);
+      await run(modelId, contextRef.current, filesRef.current);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "failed to send");
     }

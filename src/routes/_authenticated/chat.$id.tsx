@@ -15,6 +15,8 @@ import { Composer } from "@/components/chat/Composer";
 import { useChatStream } from "@/components/chat/useChatStream";
 import { PreviewPane } from "@/components/preview/PreviewPane";
 import { buildPreviewDoc, parseProjectFiles, projectKind, type PFile } from "@/lib/preview/build";
+import { parseFileDeletions } from "@/lib/preview/files";
+
 import { analyzeProject } from "@/lib/preview/analyze";
 import { loadOverrides } from "@/lib/preview/overrides";
 import { buildProjectContext } from "@/lib/prompt";
@@ -65,6 +67,8 @@ function ChatPage() {
   // Latest project snapshot + issues, sent with each request so the model edits
   // instead of regenerating.
   const contextRef = useRef("");
+  const filesRef = useRef<PFile[]>([]);
+
 
   const onDone = useCallback(async () => {
     await Promise.all([
@@ -87,7 +91,7 @@ function ChatPage() {
     const last = data.messages[data.messages.length - 1];
     if (last?.role === "user") {
       autoRan.current = true;
-      run((data.chat.model as CodexModelId) || DEFAULT_MODEL_ID, contextRef.current);
+      run((data.chat.model as CodexModelId) || DEFAULT_MODEL_ID, contextRef.current, filesRef.current);
       nav({ to: "/chat/$id", params: { id }, search: {}, replace: true });
     }
   }, [auto, data, id, nav, run]);
@@ -114,7 +118,7 @@ function ChatPage() {
       setSources([]);
       setTab("chat");
       await qc.invalidateQueries({ queryKey: ["chat", id] });
-      await run(modelId, contextRef.current);
+      await run(modelId, contextRef.current, filesRef.current);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "failed to send");
     }
@@ -138,6 +142,8 @@ function ChatPage() {
     for (const m of messages) {
       const { visible } = parseThinking(m.content);
       for (const f of parseProjectFiles(visible)) merged.set(f.path, f);
+      // Files the agent deleted with delete_file.
+      for (const path of parseFileDeletions(visible)) merged.delete(path);
     }
     // Manual editor edits win over anything the model wrote.
     const edits = loadOverrides(id);
@@ -155,7 +161,9 @@ function ChatPage() {
   // Keep the request context fresh without re-creating send()/run() callbacks.
   useEffect(() => {
     contextRef.current = project ? buildProjectContext(project.files, issues, []) : "";
+    filesRef.current = project ? project.files : [];
   }, [project, issues]);
+
 
 
   const publish = useMutation({

@@ -4,19 +4,21 @@ import { generateText, streamText, tool, stepCountIs, type ModelMessage } from "
 import { z } from "zod";
 import { DEFAULT_MODEL_ID, getModel } from "@/lib/models";
 import { splitAttachments } from "@/lib/parse-thinking";
-
-
 import { SYSTEM_PROMPT } from "@/lib/prompt";
-
-
 
 const Body = z.object({
   chatId: z.string().uuid(),
   model: z.string().default(DEFAULT_MODEL_ID),
   /** Live project files + detected issues, injected so edits are surgical. */
   context: z.string().max(120_000).optional(),
+  /** Structured project snapshot the file tools operate on. */
+  files: z
+    .array(z.object({ path: z.string(), lang: z.string().default(""), code: z.string() }))
+    .max(200)
+    .optional(),
 });
 
+const UA = "Mozilla/5.0 (compatible; OpenMatrixAgent/1.0)";
 
 function isNewKey(k: string) {
   return k.startsWith("sb_publishable_") || k.startsWith("sb_secret_");
@@ -37,10 +39,9 @@ function supaFetch(key: string): typeof fetch {
 async function webSearch(query: string) {
   const results: { title: string; snippet: string; url: string }[] = [];
   try {
-    const res = await fetch(
-      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-      { headers: { "user-agent": "Mozilla/5.0 (compatible; OpencimpcoCode/1.0)" } },
-    );
+    const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+      headers: { "user-agent": UA },
+    });
     const html = await res.text();
     const re =
       /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
@@ -55,13 +56,12 @@ async function webSearch(query: string) {
   }
   return { results };
 }
+
 /** Fetch a page and return readable text so the agent can read docs it found. */
 async function fetchPage(url: string) {
   try {
     if (!/^https?:\/\//i.test(url)) return { error: "Only http(s) URLs are supported" };
-    const res = await fetch(url, {
-      headers: { "user-agent": "Mozilla/5.0 (compatible; OpencimpcoCode/1.0)" },
-    });
+    const res = await fetch(url, { headers: { "user-agent": UA } });
     if (!res.ok) return { error: `Fetch failed (${res.status})` };
     const html = await res.text();
     const text = html
@@ -80,6 +80,122 @@ async function fetchPage(url: string) {
   }
 }
 
+const EXT_LANG: Record<string, string> = {
+  jsx: "jsx",
+  tsx: "tsx",
+  js: "js",
+  ts: "ts",
+  css: "css",
+  html: "html",
+  json: "json",
+  md: "md",
+  py: "python",
+  sql: "sql",
+  sh: "bash",
+};
+
+function langOf(path: string) {
+  const ext = path.split(".").pop()?.toLowerCase() ?? "";
+  return EXT_LANG[ext] ?? ext;
+}
+
+type VFile = { code: string; lang: string };
+
+/** In-memory project the file tools operate on for the duration of one request. */
+class Workspace {
+  files = new Map<string, VFile>();
+  changed = new Set<string>();
+  deleted = new Set<string>();
+
+  constructor(seed: { path: string; lang: string; code: string }[] = []) {
+    for (const f of seed) this.files.set(f.path, { code: f.code, lang: f.lang || langOf(f.path) });
+  }
+
+  list() {
+    return [...this.files.keys()].sort();
+  }
+  read(path: string) {
+    const f = this.files.get(path);
+    return f ? { path, code: f.code } : { error: `No such file: ${path}` };
+  }
+  write(path: string, code: string) {
+    this.files.set(path, { code, lang: langOf(path) });
+    this.changed.add(path);
+    this.deleted.delete(path);
+    return { ok: true, path, bytes: code.length };
+  }
+  edit(path: string, find: string, replace: string) {
+    const f = this.files.get(path);
+    if (!f) return { error: `No such file: ${path}. Use write_file to create it.` };
+    const first = f.code.indexOf(find);
+    if (first === -1)
+      return {
+        error: `The snippet was not found in ${path} verbatim. Call read_file first and copy an exact snippet.`,
+      };
+    if (f.code.indexOf(find, first + find.length) !== -1)
+      return { error: `The snippet appears more than once in ${path}. Include more surrounding context.` };
+    const code = f.code.slice(0, first) + replace + f.code.slice(first + find.length);
+    this.files.set(path, { code, lang: f.lang });
+    this.changed.add(path);
+    return { ok: true, path, bytes: code.length };
+  }
+  remove(path: string) {
+    if (!this.files.has(path)) return { error: `No such file: ${path}` };
+    this.files.delete(path);
+    this.changed.delete(path);
+    this.deleted.add(path);
+    return { ok: true, path };
+  }
+
+  /** Cheap static review so the agent can self-test without a real build. */
+  check() {
+    const problems: string[] = [];
+    const paths = new Set(this.files.keys());
+    const react = [...paths].some((p) => /\.(jsx|tsx)$/.test(p));
+    if (react && !paths.has("src/App.jsx") && !paths.has("src/App.tsx")) {
+      problems.push("Missing entry file src/App.jsx (or src/App.tsx) with `export default`.");
+    }
+    for (const [path, f] of this.files) {
+      if (!/\.(jsx|tsx|js|ts)$/.test(path)) continue;
+      const open = (f.code.match(/\{/g) ?? []).length;
+      const close = (f.code.match(/\}/g) ?? []).length;
+      if (open !== close) problems.push(`${path}: unbalanced braces (${open} '{' vs ${close} '}').`);
+      if (/\bTODO\b|\.\.\. *rest|rest unchanged/i.test(f.code))
+        problems.push(`${path}: contains a placeholder or TODO — emit the complete file.`);
+      const re = /from\s+['"](\.[^'"]+)['"]/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(f.code))) {
+        const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+        const parts = dir ? dir.split("/") : [];
+        for (const seg of m[1].split("/")) {
+          if (seg === "." || seg === "") continue;
+          if (seg === "..") parts.pop();
+          else parts.push(seg);
+        }
+        const base = parts.join("/");
+        const found = ["", ".jsx", ".tsx", ".ts", ".js", ".css", "/index.jsx", "/index.tsx", "/index.js"].some(
+          (s) => paths.has(base + s),
+        );
+        if (!found) problems.push(`${path}: import "${m[1]}" does not resolve to an emitted file.`);
+      }
+      if (/export\s+default/.test(f.code) === false && /^src\/App\.(jsx|tsx)$/.test(path))
+        problems.push(`${path}: no \`export default\` — the preview cannot mount it.`);
+    }
+    return problems.length ? { ok: false, problems } : { ok: true, problems: [] as string[] };
+  }
+}
+
+/** Fenced blocks for the files the tools changed, so the client applies them. */
+function changeBlocks(ws: Workspace): string {
+  const parts: string[] = [];
+  for (const path of ws.changed) {
+    const f = ws.files.get(path);
+    if (!f) continue;
+    parts.push(`\`\`\`${f.lang || "text"} ${path}\n${f.code.replace(/\n?$/, "\n")}\`\`\``);
+  }
+  for (const path of ws.deleted) parts.push(`[[oc:rm:${path}]]`);
+  return parts.length ? `\n\n${parts.join("\n\n")}\n` : "";
+}
 
 export const Route = createFileRoute("/api/chat")({
   server: {
@@ -88,7 +204,6 @@ export const Route = createFileRoute("/api/chat")({
         try {
           const body = Body.parse(await request.json());
           const model = getModel(body.model);
-
 
           const auth = request.headers.get("authorization");
           if (!auth?.startsWith("Bearer ")) return new Response("Unauthorized", { status: 401 });
@@ -203,54 +318,88 @@ export const Route = createFileRoute("/api/chat")({
             return new Response(e instanceof Error ? e.message : "model unavailable", { status: 500 });
           }
 
+          const ws = new Workspace(body.files ?? []);
+          const system = body.context ? `${SYSTEM_PROMPT}\n\n${body.context}` : SYSTEM_PROMPT;
 
-          const result = streamText({
-            model: languageModel,
-            system: body.context ? `${SYSTEM_PROMPT}\n\n${body.context}` : SYSTEM_PROMPT,
-            messages,
-            stopWhen: stepCountIs(model.tools ? 50 : 1),
-            // Third-party providers default to huge budgets that some accounts cannot afford,
-            // and Groq's free tier rejects large per-request token budgets outright.
-            ...(model.providerKey === "lovable"
-              ? {}
-              : { maxOutputTokens: model.providerKey === "groq" ? 3500 : 8000 }),
-            ...(model.thinking && model.providerKey === "openrouter"
-              ? { providerOptions: { openrouter: { reasoning: { effort: "medium" } } } }
-              : {}),
-
-            ...(model.tools
-              ? {
-                  tools: {
-                    web_search: tool({
-                      description:
-                        "Search the live web for current documentation, APIs, news or facts. Returns up to 5 results with title, snippet and URL.",
-                      inputSchema: z.object({ query: z.string() }),
-                      execute: async ({ query }) => webSearch(query),
-                    }),
-                    fetch_page: tool({
-                      description:
-                        "Fetch a URL and return its readable text. Use it after web_search to read the actual documentation page before writing code.",
-                      inputSchema: z.object({ url: z.string() }),
-                      execute: async ({ url }) => fetchPage(url),
-                    }),
-                  },
-                }
-              : {}),
-          });
+          const tools = {
+            web_search: tool({
+              description:
+                "Search the live web for current documentation, APIs, news or facts. Returns up to 5 results with title, snippet and URL.",
+              inputSchema: z.object({ query: z.string() }),
+              execute: async ({ query }) => webSearch(query),
+            }),
+            fetch_page: tool({
+              description:
+                "Fetch a URL and return its readable text. Use it after web_search to read the actual documentation page before writing code.",
+              inputSchema: z.object({ url: z.string() }),
+              execute: async ({ url: u }) => fetchPage(u),
+            }),
+            list_files: tool({
+              description: "List every file path in the live project.",
+              inputSchema: z.object({}),
+              execute: async () => ({ files: ws.list() }),
+            }),
+            read_file: tool({
+              description: "Read the full current contents of one project file. Always read before editing.",
+              inputSchema: z.object({ path: z.string() }),
+              execute: async ({ path }) => ws.read(path),
+            }),
+            write_file: tool({
+              description:
+                "Create a new file or fully replace an existing one. Use full project paths such as src/App.jsx.",
+              inputSchema: z.object({ path: z.string(), content: z.string() }),
+              execute: async ({ path, content }) => ws.write(path, content),
+            }),
+            edit_file: tool({
+              description:
+                "Surgically replace an exact snippet inside a file. `find` must appear exactly once, copied verbatim from the current file. Preferred over rewriting whole files.",
+              inputSchema: z.object({ path: z.string(), find: z.string(), replace: z.string() }),
+              execute: async ({ path, find, replace }) => ws.edit(path, find, replace),
+            }),
+            delete_file: tool({
+              description: "Delete a file from the project. Only when the user asked for it.",
+              inputSchema: z.object({ path: z.string() }),
+              execute: async ({ path }) => ws.remove(path),
+            }),
+            check_project: tool({
+              description:
+                "Static self-test of the whole project: missing entry file, unresolved relative imports, unbalanced braces, placeholders. Run after your edits.",
+              inputSchema: z.object({}),
+              execute: async () => ws.check(),
+            }),
+          };
 
           const encoder = new TextEncoder();
           const stream = new ReadableStream({
             async start(controller) {
               let full = "";
-              let reasoningOpen = false;
               const push = (s: string) => {
                 full += s;
                 controller.enqueue(encoder.encode(s));
               };
-              try {
+
+              /** One streaming pass. Returns the finish reason so we can resume. */
+              async function pass(convo: ModelMessage[]): Promise<{ reason: string; text: string }> {
+                let reasoningOpen = false;
+                let text = "";
+                const result = streamText({
+                  model: languageModel!,
+                  system,
+                  messages: convo,
+                  stopWhen: stepCountIs(model.tools ? 50 : 1),
+                  // Third-party providers default to huge budgets that some accounts cannot
+                  // afford, and Groq's free tier rejects large per-request token budgets.
+                  ...(model.providerKey === "lovable"
+                    ? {}
+                    : { maxOutputTokens: model.providerKey === "groq" ? 3500 : 8000 }),
+                  ...(model.thinking && model.providerKey === "openrouter"
+                    ? { providerOptions: { openrouter: { reasoning: { effort: "medium" } } } }
+                    : {}),
+                  ...(model.tools ? { tools } : {}),
+                });
+
                 for await (const part of result.fullStream) {
                   if (part.type === "reasoning-delta") {
-                    // Surface upstream reasoning tokens in the app's thinking panel.
                     if (!reasoningOpen) {
                       reasoningOpen = true;
                       push("<thinking>");
@@ -261,11 +410,27 @@ export const Route = createFileRoute("/api/chat")({
                       reasoningOpen = false;
                       push("</thinking>\n\n");
                     }
+                    text += part.text;
                     push(part.text);
                   } else if (part.type === "tool-call") {
-                    const input = part.input as { query?: string; url?: string };
-                    const label = input?.query ?? input?.url ?? "";
-                    const kind = part.toolName === "fetch_page" ? "read" : "search";
+                    const input = part.input as Record<string, unknown>;
+                    const label = String(input?.query ?? input?.url ?? input?.path ?? "");
+                    const kind =
+                      part.toolName === "fetch_page"
+                        ? "read"
+                        : part.toolName === "web_search"
+                          ? "search"
+                          : part.toolName === "list_files"
+                            ? "ls"
+                            : part.toolName === "read_file"
+                              ? "cat"
+                              : part.toolName === "write_file"
+                                ? "write"
+                                : part.toolName === "edit_file"
+                                  ? "edit"
+                                  : part.toolName === "delete_file"
+                                    ? "rm"
+                                    : "check";
                     push(`\n\n[[oc:${kind}:${label.replace(/[\]\n]/g, " ")}]]\n\n`);
                   } else if (part.type === "error") {
                     const err = part.error;
@@ -273,10 +438,43 @@ export const Route = createFileRoute("/api/chat")({
                   }
                 }
                 if (reasoningOpen) push("</thinking>\n\n");
+                let reason = "stop";
+                try {
+                  reason = await result.finishReason;
+                } catch {
+                  reason = "error";
+                }
+                return { reason, text };
+              }
+
+              try {
+                const convo = [...messages];
+                let { reason, text } = await pass(convo);
+                // Providers truncate long builds mid-file. Resume from the exact
+                // stopping point instead of leaving broken code on screen.
+                for (let i = 0; i < 3; i++) {
+                  const unclosed = (text.match(/^\s*```/gm) ?? []).length % 2 === 1;
+                  if (reason !== "length" && !(unclosed && reason !== "error")) break;
+                  push(`\n\n[[oc:resume:continuing]]\n\n`);
+                  convo.push({ role: "assistant", content: text } as ModelMessage);
+                  convo.push({
+                    role: "user",
+                    content:
+                      "Your previous message was cut off mid-answer. Continue from the EXACT character where you stopped. Do not repeat anything, do not restate the plan, do not reopen a fence you already opened — just continue and finish, including the Self-test and How to verify sections.",
+                  } as ModelMessage);
+                  const next = await pass(convo);
+                  reason = next.reason;
+                  text = text + next.text;
+                }
               } catch (e) {
                 const msg = e instanceof Error ? e.message : "stream error";
                 push(`\n\n[error] ${msg}`);
               }
+
+              // Apply tool-driven file changes to the transcript so the preview,
+              // editor and file browser pick them up.
+              if (ws.changed.size || ws.deleted.size) push(changeBlocks(ws));
+
               try {
                 // Persist before closing the response stream. The client refetches as
                 // soon as the stream closes, so closing first creates a race where the
@@ -309,7 +507,6 @@ export const Route = createFileRoute("/api/chat")({
               }
             },
           });
-
 
           return new Response(stream, {
             headers: {

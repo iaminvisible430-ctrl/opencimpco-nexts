@@ -1,31 +1,25 @@
 export function Logo({ className = "h-10 w-10" }: { className?: string }) {
   return (
     <div
-      className={`${className} relative grid place-items-center overflow-hidden rounded-[30%] bg-[oklch(0.24_0.012_250)] shadow-lg`}
+      className={`${className} relative grid place-items-center overflow-hidden rounded-[30%] bg-[oklch(0.2_0.02_275)] shadow-lg`}
     >
       <div
-        className="absolute inset-0 opacity-90"
+        className="absolute inset-0 opacity-95"
         style={{
           background:
-            "conic-gradient(from 210deg, var(--ember), oklch(0.85 0.13 85), var(--signal), var(--ember))",
+            "conic-gradient(from 200deg, var(--ember), oklch(0.82 0.16 300), var(--signal), oklch(0.84 0.15 150), var(--ember))",
         }}
       />
-      <div className="absolute inset-[14%] rounded-[26%] bg-[oklch(0.17_0.01_250)]" />
+      <div className="absolute inset-[13%] rounded-[26%] bg-[oklch(0.16_0.014_275)]" />
       <svg viewBox="0 0 24 24" fill="none" className="relative h-1/2 w-1/2 text-white" aria-hidden>
         <path
-          d="M12 3.2 20 7.6v8.8L12 20.8 4 16.4V7.6z"
+          d="M4 18V9.2c0-.6.7-.9 1.1-.5L12 15l6.9-6.3c.4-.4 1.1-.1 1.1.5V18"
           stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinejoin="round"
-          opacity="0.55"
-        />
-        <path
-          d="M9.6 9.4 7.2 12l2.4 2.6M14.4 9.4 16.8 12l-2.4 2.6"
-          stroke="currentColor"
-          strokeWidth="1.9"
+          strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
+        <circle cx="12" cy="5" r="1.6" fill="currentColor" opacity="0.85" />
       </svg>
     </div>
   );

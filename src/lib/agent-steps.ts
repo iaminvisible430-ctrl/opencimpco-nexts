@@ -1,4 +1,15 @@
-export type StepKind = "plan" | "search" | "read" | "file" | "selftest" | "verify";
+export type StepKind =
+  | "plan"
+  | "search"
+  | "read"
+  | "file"
+  | "write"
+  | "edit"
+  | "rm"
+  | "check"
+  | "selftest"
+  | "verify"
+  | "resume";
 export type StepState = "active" | "done";
 
 export type AgentStep = {
@@ -9,15 +20,42 @@ export type AgentStep = {
   state: StepState;
 };
 
-const SEARCH = /\[\[oc:search:([^\]]*)\]\]/g;
-const READ = /\[\[oc:read:([^\]]*)\]\]/g;
+/** Any machine-readable activity marker the server pushes into the stream. */
+const MARKER = /\[\[oc:([a-z_]+):([^\]]*)\]\]/g;
 
-/** Strip the machine-readable activity markers out of displayable text. */
+const LABELS: Record<string, { kind: StepKind; label: string }> = {
+  search: { kind: "search", label: "Searching the web" },
+  read: { kind: "read", label: "Reading documentation" },
+  ls: { kind: "check", label: "Listing project files" },
+  cat: { kind: "read", label: "Reading project file" },
+  write: { kind: "write", label: "Writing file" },
+  edit: { kind: "edit", label: "Editing file" },
+  rm: { kind: "rm", label: "Deleting file" },
+  check: { kind: "check", label: "Checking the project" },
+  resume: { kind: "resume", label: "Resuming from where it paused" },
+};
+
+/**
+ * Some providers leak raw tool-call scaffolding into the text channel instead of
+ * the tool channel. Never show that to the user.
+ */
+const TOOL_NOISE = [
+  /<tool_call>[\s\S]*?<\/tool_call>/g,
+  /<tool_response>[\s\S]*?<\/tool_response>/g,
+  /<\|tool_calls?_(?:begin|section_begin)\|>[\s\S]*?<\|tool_calls?_(?:end|section_end)\|>/g,
+  /<\|(?:python_tag|tool▁calls▁begin|tool▁calls▁end|tool▁call▁begin|tool▁sep)\|>/g,
+  /<function=[^>]*>[\s\S]*?<\/function>/g,
+  /^\s*\{"(?:name|tool_name|function)"\s*:\s*"(?:web_search|fetch_page|list_files|read_file|write_file|edit_file|delete_file|check_project)"[\s\S]*?\}\s*$/gm,
+];
+
+/** Strip markers and provider tool noise out of displayable text. */
 export function stripMarkers(text: string): string {
-  return text.replace(SEARCH, "").replace(READ, "").replace(/\n{3,}/g, "\n\n");
+  let out = text.replace(MARKER, "");
+  for (const re of TOOL_NOISE) out = out.replace(re, "");
+  return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-const FENCE_OPEN = /```([^\n`]*)\n/g;
+const FENCE_OPEN = /^\s*```([^\n`]*)$/gm;
 
 function fileLabel(info: string, index: number): string {
   const tokens = info.trim().split(/\s+/).filter(Boolean);
@@ -43,31 +81,24 @@ export function deriveSteps(raw: string, streaming: boolean): AgentStep[] {
     });
   }
 
-  const searches = [...raw.matchAll(new RegExp(SEARCH))].map((m) => m[1]);
-  searches.forEach((q, i) => {
+  let n = 0;
+  for (const m of raw.matchAll(new RegExp(MARKER))) {
+    const meta = LABELS[m[1]];
+    if (!meta) continue;
     steps.push({
-      id: `search-${i}`,
-      kind: "search",
-      label: "Searching the web",
-      detail: q,
+      id: `mk-${n++}`,
+      kind: meta.kind,
+      label: meta.label,
+      detail: m[2]?.trim() || undefined,
       state: "done",
     });
-  });
-
-  const reads = [...raw.matchAll(new RegExp(READ))].map((m) => m[1]);
-  reads.forEach((url, i) => {
-    steps.push({
-      id: `read-${i}`,
-      kind: "read",
-      label: "Reading documentation",
-      detail: url,
-      state: "done",
-    });
-  });
+  }
 
   // Count fence boundaries to know whether the last file is still being written.
-  const fenceCount = (raw.match(/```/g) ?? []).length;
-  const openInfos = [...raw.matchAll(new RegExp(FENCE_OPEN))].map((m) => m[1]);
+  const fenceCount = (raw.match(/^\s*```/gm) ?? []).length;
+  const openInfos = [...raw.matchAll(new RegExp(FENCE_OPEN))]
+    .map((m) => m[1])
+    .filter((info) => info.trim().length > 0);
   const lastOpen = fenceCount % 2 === 1;
   openInfos.forEach((info, i) => {
     const isLast = i === openInfos.length - 1;

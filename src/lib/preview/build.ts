@@ -35,12 +35,16 @@ function esc(s: string) {
 /**
  * Preview iframes have an opaque origin, so any third-party API call from a
  * generated app is blocked by CORS. `ocFetch` routes through our proxy route so
- * agents can build apps with real API connections.
+ * agents can build apps with real API connections. `ocDB` gives generated apps
+ * persistent storage and `ocAI` gives them a built-in model — both keep working
+ * after the project is shipped.
  */
-function proxyShim(): string {
+function proxyShim(projectKey = "preview"): string {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   return `(function(){
-  var BASE = ${JSON.stringify(`${origin}/api/public/proxy?url=`)};
+  var ORIGIN = ${JSON.stringify(origin)};
+  var BASE = ORIGIN + "/api/public/proxy?url=";
+  var NS = ${JSON.stringify(`oc-db:${projectKey}`)};
   function viaProxy(url){
     try {
       var u = String(url);
@@ -50,8 +54,46 @@ function proxyShim(): string {
   }
   window.ocProxyUrl = viaProxy;
   window.ocFetch = function(url, init){ return fetch(viaProxy(url), init); };
+
+  function key(table){ return NS + ":" + String(table || "default"); }
+  function read(table){
+    try { return JSON.parse(localStorage.getItem(key(table)) || "{}") || {}; }
+    catch (e) { return {}; }
+  }
+  function write(table, obj){
+    try { localStorage.setItem(key(table), JSON.stringify(obj)); } catch (e) {}
+  }
+  window.ocDB = {
+    get: function(table, id){ return Promise.resolve(read(table)[String(id)] === undefined ? null : read(table)[String(id)]); },
+    set: function(table, id, value){
+      var o = read(table); o[String(id)] = value; write(table, o);
+      return Promise.resolve(value);
+    },
+    list: function(table){
+      var o = read(table);
+      return Promise.resolve(Object.keys(o).map(function(k){
+        var v = o[k];
+        return (v && typeof v === "object" && !Array.isArray(v)) ? Object.assign({ id: k }, v) : { id: k, value: v };
+      }));
+    },
+    remove: function(table, id){ var o = read(table); delete o[String(id)]; write(table, o); return Promise.resolve(true); },
+    clear: function(table){ write(table, {}); return Promise.resolve(true); }
+  };
+
+  window.ocAI = function(prompt, opts){
+    opts = opts || {};
+    return fetch(ORIGIN + "/api/public/ai", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: String(prompt), system: opts.system, json: !!opts.json })
+    }).then(function(r){ return r.json(); }).then(function(d){
+      if (d && d.error) throw new Error(d.error);
+      return (d && d.text) || "";
+    });
+  };
 })();`;
 }
+
 
 const RUNTIME = String.raw`
 (function () {

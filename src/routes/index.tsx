@@ -7,13 +7,13 @@ export const Route = createFileRoute("/")({
   ssr: false,
   head: () => ({
     meta: [
-      { title: "Opencimpco Code — AI coding, live preview, publish" },
+      { title: "OpenMatrix Agent — AI coding, live preview, publish" },
       {
         name: "description",
         content:
           "Mobile-first AI coding assistant with deep thinking, streaming responses, image attachments and live React / HTML preview.",
       },
-      { property: "og:title", content: "Opencimpco Code — AI coding, live preview, publish" },
+      { property: "og:title", content: "OpenMatrix Agent — AI coding, live preview, publish" },
       {
         property: "og:description",
         content: "Mobile-first AI coding assistant with deep thinking, streaming responses, image attachments and live React / HTML preview.",

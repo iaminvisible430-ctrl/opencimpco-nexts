@@ -15,6 +15,8 @@ import { Composer } from "@/components/chat/Composer";
 import { useChatStream } from "@/components/chat/useChatStream";
 import { PreviewPane } from "@/components/preview/PreviewPane";
 import { buildPreviewDoc, parseProjectFiles, projectKind, type PFile } from "@/lib/preview/build";
+import { parseFileDeletions } from "@/lib/preview/files";
+
 import { analyzeProject } from "@/lib/preview/analyze";
 import { loadOverrides } from "@/lib/preview/overrides";
 import { buildProjectContext } from "@/lib/prompt";
@@ -138,6 +140,8 @@ function ChatPage() {
     for (const m of messages) {
       const { visible } = parseThinking(m.content);
       for (const f of parseProjectFiles(visible)) merged.set(f.path, f);
+      // Files the agent deleted with delete_file.
+      for (const path of parseFileDeletions(visible)) merged.delete(path);
     }
     // Manual editor edits win over anything the model wrote.
     const edits = loadOverrides(id);
@@ -155,7 +159,9 @@ function ChatPage() {
   // Keep the request context fresh without re-creating send()/run() callbacks.
   useEffect(() => {
     contextRef.current = project ? buildProjectContext(project.files, issues, []) : "";
+    filesRef.current = project ? project.files : [];
   }, [project, issues]);
+
 
 
   const publish = useMutation({

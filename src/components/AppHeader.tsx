@@ -17,11 +17,12 @@ export function AppHeader() {
         <Logo className="h-8 w-8" />
         <div className="min-w-0">
           <div className="truncate font-display text-[15px] font-bold leading-tight">
-            Opencimpco <span className="gradient-text">Code</span>
+            OpenMatrix <span className="gradient-text">Agent</span>
           </div>
           <div className="truncate text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
             build · preview · ship
           </div>
+
         </div>
       </Link>
       <div className="flex shrink-0 items-center gap-2">

@@ -1,15 +1,34 @@
-import { BookOpen, Brain, Check, FileCode2, Globe, Loader2, ShieldCheck, Sparkles } from "lucide-react";
-import type { AgentStep } from "@/lib/agent-steps";
+import {
+  BookOpen,
+  Brain,
+  Check,
+  FileCode2,
+  FilePlus2,
+  Globe,
+  Loader2,
+  PlayCircle,
+  Scissors,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
+import type { AgentStep, StepKind } from "@/lib/agent-steps";
 import { cn } from "@/lib/utils";
 
-const ICONS = {
+const ICONS: Record<StepKind, typeof Brain> = {
   plan: Brain,
   search: Globe,
   read: BookOpen,
   file: FileCode2,
+  write: FilePlus2,
+  edit: Scissors,
+  rm: Trash2,
+  check: ShieldCheck,
   selftest: ShieldCheck,
   verify: Sparkles,
-} as const;
+  resume: PlayCircle,
+};
+
 
 export function AgentActivity({ steps }: { steps: AgentStep[] }) {
   if (!steps.length) return null;

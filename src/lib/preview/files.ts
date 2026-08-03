@@ -4,8 +4,6 @@ export type PFile = {
   code: string;
 };
 
-const FENCE = /```([^\n`]*)\n([\s\S]*?)```/g;
-
 const EXT_LANG: Record<string, string> = {
   jsx: "jsx",
   tsx: "tsx",
@@ -84,7 +82,28 @@ const LANG_EXT: Record<string, string> = {
 };
 
 function normalize(p: string) {
-  return p.replace(/^\.\//, "").replace(/^\/+/, "").trim();
+  return p
+    .replace(/^[`'"*\s]+|[`'"*\s:]+$/g, "")
+    .replace(/^\.\//, "")
+    .replace(/^\/+/, "")
+    .trim();
+}
+
+/**
+ * Many models emit a bare `App.jsx` or `Card.tsx` instead of the `src/…` path the
+ * preview runtime mounts. Repair those so the entry file is always found.
+ */
+function canonical(path: string, lang: string): string {
+  let p = normalize(path);
+  if (!p) return p;
+  if (!p.includes("/")) {
+    const base = p.toLowerCase();
+    if (lang === "jsx" || lang === "tsx") p = `src/${p}`;
+    else if ((lang === "js" || lang === "ts") && /^(app|main|index)\.(js|ts)$/.test(base)) p = `src/${p}`;
+  }
+  // Normalise casing of the canonical React entry so `src/app.jsx` still boots.
+  p = p.replace(/^src\/app\.(jsx|tsx)$/i, (_m, ext) => `src/App.${ext.toLowerCase()}`);
+  return p;
 }
 
 function defaultPath(lang: string, index: number) {
@@ -96,40 +115,107 @@ function defaultPath(lang: string, index: number) {
   return index === 0 ? `main.${ext}` : `file-${index}.${ext}`;
 }
 
+const PATH_RE = /(?:^|[\s`("'*])((?:[\w.@-]+\/)*[\w.-]+\.[a-zA-Z0-9]{1,5})(?=[\s`)"'*:,]|$)/;
+
+/** Pull a file path out of a prose line such as `**src/App.jsx**` or `File: src/App.jsx`. */
+function pathFromProse(line: string): string {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.length > 160) return "";
+  const cleaned = trimmed.replace(/^(#{1,6}\s*|[-*]\s*)/, "").replace(/^(file|path|filename)\s*[:=]\s*/i, "");
+  const m = PATH_RE.exec(` ${cleaned} `);
+  if (!m) return "";
+  const candidate = m[1];
+  // Reject sentences that merely mention a file in passing.
+  if (cleaned.replace(candidate, "").replace(/[\s`*:=,.\-—()]/g, "").length > 24) return "";
+  return candidate;
+}
+
+const COMMENT_PATH =
+  /^\s*(?:\/\/|#|<!--|\/\*)\s*(?:file\s*[:=]\s*)?((?:[\w.@-]+\/)*[\w.-]+\.[a-zA-Z0-9]{1,5})\s*(?:-->|\*\/)?\s*$/;
+
+type RawBlock = { info: string; code: string; before: string; closed: boolean };
+
+/** Scan fences manually so an unterminated (still streaming) block is still usable. */
+function scanFences(text: string): RawBlock[] {
+  const blocks: RawBlock[] = [];
+  const lines = text.split("\n");
+  let i = 0;
+  let prose: string[] = [];
+  while (i < lines.length) {
+    const line = lines[i];
+    const open = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!open) {
+      prose.push(line);
+      i++;
+      continue;
+    }
+    const marker = open[1][0].repeat(3);
+    const info = open[2] ?? "";
+    const body: string[] = [];
+    i++;
+    let closed = false;
+    while (i < lines.length) {
+      if (new RegExp(`^\\s*${marker === "`" ? "`" : "~"}{3,}\\s*$`).test(lines[i])) {
+        closed = true;
+        i++;
+        break;
+      }
+      body.push(lines[i]);
+      i++;
+    }
+    blocks.push({
+      info,
+      code: body.join("\n") + (closed ? "\n" : ""),
+      before: prose.slice(-3).join("\n"),
+      closed,
+    });
+    prose = [];
+  }
+  return blocks;
+}
+
 /**
  * Parse fenced blocks into a virtual project.
- * Supported info strings:
- *   ```jsx src/App.jsx
- *   ```tsx file=src/Card.tsx
- *   ```python app/main.py
- *   ```css
+ * Path resolution order (most models get at least one of these right):
+ *   1. fence info string — ```jsx src/App.jsx  /  ```tsx file=src/Card.tsx
+ *   2. the prose line right before the fence — **src/App.jsx** / File: src/App.jsx
+ *   3. a leading path comment inside the code — // src/App.jsx
+ *   4. a language-based default (src/App.jsx, index.html, …)
  */
 export function parseProjectFiles(text: string): PFile[] {
   const files: PFile[] = [];
-  const re = new RegExp(FENCE);
-  let m: RegExpExecArray | null;
   let i = 0;
-  while ((m = re.exec(text))) {
-    const info = (m[1] || "").trim();
-    const code = m[2];
+  for (const block of scanFences(text)) {
+    const info = block.info.trim();
+    let code = block.code;
     const tokens = info.split(/\s+/).filter(Boolean);
     let lang = (tokens[0] || "").toLowerCase();
     let path = "";
     for (const t of tokens.slice(1)) {
-      const cleaned = t.replace(/^file=/, "").replace(/^title=/, "").replace(/["']/g, "");
+      const cleaned = t.replace(/^(file|path|title)=/, "").replace(/["'`]/g, "");
       if (/\.[a-zA-Z0-9]+$/.test(cleaned)) path = cleaned;
     }
     if (!path && /\.[a-zA-Z0-9]+$/.test(lang)) {
       path = lang;
       lang = "";
     }
+    if (!path) path = pathFromProse(block.before.split("\n").filter((l) => l.trim()).pop() ?? "");
+    if (!path) {
+      const first = code.split("\n", 1)[0] ?? "";
+      const m = COMMENT_PATH.exec(first);
+      if (m) path = m[1];
+    }
     if (path) {
       const ext = path.split(".").pop()!.toLowerCase();
       lang = EXT_LANG[ext] ?? lang ?? ext;
     }
     lang = ALIAS[lang] ?? lang;
+    // Skip non-file blocks (shell snippets, plain prose fences) with no real code.
+    if (!path && !lang && !code.trim()) continue;
     if (!path) path = defaultPath(lang, i);
-    const normalized = normalize(path);
+    const normalized = canonical(path, lang);
+    if (!/\.[a-zA-Z0-9]+$/.test(normalized)) continue;
+    if (!code.endsWith("\n")) code += "\n";
     const existing = files.findIndex((f) => f.path === normalized);
     const file = { path: normalized, lang, code };
     // A later block for the same path is a revision — keep the newest.
@@ -138,6 +224,15 @@ export function parseProjectFiles(text: string): PFile[] {
     i++;
   }
   return files;
+}
+
+/** Paths the agent explicitly deleted, encoded as `[[oc:rm:path]]`. */
+export function parseFileDeletions(text: string): string[] {
+  const out: string[] = [];
+  const re = /\[\[oc:rm:([^\]]+)\]\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) out.push(normalize(m[1]));
+  return out;
 }
 
 const RUNNABLE = new Set(["jsx", "tsx", "js", "ts", "css", "html"]);

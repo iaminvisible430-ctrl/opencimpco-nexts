@@ -67,6 +67,8 @@ function ChatPage() {
   // Latest project snapshot + issues, sent with each request so the model edits
   // instead of regenerating.
   const contextRef = useRef("");
+  const filesRef = useRef<PFile[]>([]);
+
 
   const onDone = useCallback(async () => {
     await Promise.all([

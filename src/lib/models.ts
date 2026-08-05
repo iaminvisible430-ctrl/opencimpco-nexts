@@ -29,6 +29,12 @@ export interface CodexModel {
   tools: boolean;
   /** Native image understanding. Non-vision models get OCR pre-processing instead. */
   vision: boolean;
+  /**
+   * Per-request output budget that this provider/plan actually accepts. Sending
+   * a provider's default (often 32k-64k) makes free tiers reject the whole
+   * request, which is why every non-Lovable model pins its own ceiling.
+   */
+  maxOutput?: number;
   /** Grouping label used by the model picker. */
   group: "Flagship" | "Fast" | "Coding" | "Open source";
   /** Rough speed hint used for the icon in the model picker. */
@@ -36,9 +42,12 @@ export interface CodexModel {
 }
 
 /**
- * Curated catalog: Lovable AI (managed, no key), Qwen Cloud, Mistral, plus the
- * strongest open-source coding models from OpenRouter, Groq and Cloudflare.
- * Every entry has been called live — dead ids are removed rather than hidden.
+ * Curated catalog. Every entry below was called live (streaming + tool calling)
+ * before shipping; providers whose keys are out of credit or whose ids 404 are
+ * removed rather than hidden, so the picker never offers a dead model.
+ *
+ * Verified providers: Lovable AI, Hugging Face router, Bazaarlink, Cerebras,
+ * Groq, Qwen Cloud, Mistral, Cloudflare Workers AI.
  */
 export const CODEX_MODELS: CodexModel[] = [
   // ---------- Flagship ----------
@@ -71,30 +80,47 @@ export const CODEX_MODELS: CodexModel[] = [
     speed: "deep",
   },
   {
-    id: "om-gpt-terra",
-    name: "OpenMatrix GPT Terra",
-    tagline: "GPT-5.6 Terra — hardest agentic and architecture work",
-    tags: ["Frontier", "Agentic", "Long tasks"],
-    cost: 450,
-    providerKey: "lovable",
-    provider: "openai/gpt-5.6-terra",
+    id: "nemotron-ultra-550b",
+    name: "Nemotron Ultra 550B",
+    tagline: "NVIDIA's largest open reasoning model, served by Hugging Face",
+    tags: ["550B", "Frontier", "Architecture"],
+    cost: 200,
+    providerKey: "huggingface",
+    provider: "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4",
     thinking: true,
     tools: true,
-    vision: true,
+    vision: false,
+    maxOutput: 8000,
     group: "Flagship",
     speed: "deep",
   },
   {
-    id: "nemotron-ultra-550b",
-    name: "Nemotron Ultra 550B",
-    tagline: "NVIDIA's largest open reasoning model, via OpenRouter",
-    tags: ["550B", "Frontier", "Architecture"],
+    id: "deepseek-v4-pro",
+    name: "DeepSeek V4 Pro",
+    tagline: "DeepSeek's frontier reasoning + coding model",
+    tags: ["Reasoning", "Code", "Long tasks"],
     cost: 200,
-    providerKey: "openrouter",
-    provider: "nvidia/nemotron-3-ultra-550b-a55b",
+    providerKey: "huggingface",
+    provider: "deepseek-ai/DeepSeek-V4-Pro",
     thinking: true,
     tools: true,
     vision: false,
+    maxOutput: 8000,
+    group: "Flagship",
+    speed: "deep",
+  },
+  {
+    id: "glm-52",
+    name: "GLM 5.2",
+    tagline: "Zhipu's flagship agentic coder",
+    tags: ["Agentic", "Code", "Tools"],
+    cost: 180,
+    providerKey: "huggingface",
+    provider: "zai-org/GLM-5.2",
+    thinking: true,
+    tools: true,
+    vision: false,
+    maxOutput: 8000,
     group: "Flagship",
     speed: "deep",
   },
@@ -139,20 +165,22 @@ export const CODEX_MODELS: CodexModel[] = [
     thinking: true,
     tools: true,
     vision: false,
+    maxOutput: 3500,
     group: "Fast",
     speed: "fast",
   },
   {
-    id: "groq-compound",
-    name: "Groq Compound",
-    tagline: "Agentic Groq system with built-in web search + code exec",
-    tags: ["Agentic", "Web search", "Tools"],
-    cost: 100,
-    providerKey: "groq",
-    provider: "groq/compound",
+    id: "cerebras-oss120b",
+    name: "GPT-OSS 120B (Cerebras)",
+    tagline: "Same open 120B on Cerebras wafer-scale inference",
+    tags: ["Fastest", "Tools", "Reasoning"],
+    cost: 80,
+    providerKey: "cerebras",
+    provider: "gpt-oss-120b",
     thinking: true,
     tools: true,
     vision: false,
+    maxOutput: 4000,
     group: "Fast",
     speed: "fast",
   },
@@ -167,11 +195,72 @@ export const CODEX_MODELS: CodexModel[] = [
     thinking: true,
     tools: true,
     vision: false,
+    maxOutput: 3500,
+    group: "Fast",
+    speed: "fast",
+  },
+  {
+    id: "groq-llama33",
+    name: "Llama 3.3 70B (Groq)",
+    tagline: "Reliable general model at Groq speed",
+    tags: ["Fast", "General", "Tools"],
+    cost: 60,
+    providerKey: "groq",
+    provider: "llama-3.3-70b-versatile",
+    thinking: false,
+    tools: true,
+    vision: false,
+    maxOutput: 3500,
+    group: "Fast",
+    speed: "fast",
+  },
+  {
+    id: "minimax-m27",
+    name: "MiniMax M2.7",
+    tagline: "Fast agentic reasoning model via Bazaarlink",
+    tags: ["Agentic", "Thinking", "Tools"],
+    cost: 90,
+    providerKey: "bazaarlink",
+    provider: "minimax-m2.7",
+    thinking: true,
+    tools: true,
+    vision: false,
+    maxOutput: 4000,
     group: "Fast",
     speed: "fast",
   },
 
   // ---------- Coding ----------
+  {
+    id: "qwen3-coder-next",
+    name: "Qwen3 Coder Next",
+    tagline: "Qwen's newest dedicated coder, served by Hugging Face",
+    tags: ["Whole repos", "Agentic", "Refactors"],
+    cost: 140,
+    providerKey: "huggingface",
+    provider: "Qwen/Qwen3-Coder-Next",
+    thinking: true,
+    tools: true,
+    vision: false,
+    maxOutput: 8000,
+    group: "Coding",
+    speed: "balanced",
+  },
+  {
+    id: "kimi-k27-code",
+    name: "Kimi K2.7 Code",
+    tagline: "Moonshot's coding specialist via Bazaarlink",
+    tags: ["Code", "Thinking", "Tools"],
+    cost: 140,
+    providerKey: "bazaarlink",
+    provider: "kimi-k2.7-code",
+    thinking: true,
+    tools: true,
+    vision: false,
+    maxOutput: 4000,
+    group: "Coding",
+    speed: "balanced",
+  },
   {
     id: "qwen3-coder-plus",
     name: "Qwen3 Coder Plus",
@@ -183,48 +272,37 @@ export const CODEX_MODELS: CodexModel[] = [
     thinking: true,
     tools: true,
     vision: false,
+    maxOutput: 6000,
     group: "Coding",
     speed: "balanced",
   },
   {
-    id: "qwen3-max",
-    name: "Qwen3 Max",
-    tagline: "Qwen's largest reasoning model",
-    tags: ["Reasoning", "Architecture", "Long context"],
-    cost: 160,
+    id: "qwen3-coder-flash",
+    name: "Qwen3 Coder Flash",
+    tagline: "Cheaper, quicker Qwen coder for small edits",
+    tags: ["Cheap", "Quick fixes", "Tools"],
+    cost: 80,
     providerKey: "qwen",
-    provider: "qwen3-max",
+    provider: "qwen3-coder-flash",
     thinking: true,
     tools: true,
     vision: false,
+    maxOutput: 6000,
     group: "Coding",
-    speed: "deep",
+    speed: "fast",
   },
   {
-    id: "qwen-vl-max",
-    name: "Qwen VL Max",
-    tagline: "Qwen vision model — screenshots to code",
-    tags: ["Vision", "OCR", "Screenshot → UI"],
-    cost: 140,
-    providerKey: "qwen",
-    provider: "qwen-vl-max",
-    thinking: true,
-    tools: true,
-    vision: true,
-    group: "Coding",
-    speed: "balanced",
-  },
-  {
-    id: "qwen3-coder",
-    name: "Qwen3 Coder (OpenRouter)",
-    tagline: "Open-weight Qwen3 Coder, great at whole files",
-    tags: ["Code", "Node & Python", "APIs"],
-    cost: 100,
-    providerKey: "openrouter",
-    provider: "qwen/qwen3-coder",
+    id: "glm-47-cerebras",
+    name: "GLM 4.7 (Cerebras)",
+    tagline: "Zhipu GLM 4.7 at Cerebras speed, strong tool use",
+    tags: ["Agentic", "Code", "Fast"],
+    cost: 110,
+    providerKey: "cerebras",
+    provider: "zai-glm-4.7",
     thinking: true,
     tools: true,
     vision: false,
+    maxOutput: 4000,
     group: "Coding",
     speed: "balanced",
   },
@@ -236,11 +314,44 @@ export const CODEX_MODELS: CodexModel[] = [
     cost: 100,
     providerKey: "mistral",
     provider: "codestral-latest",
+    thinking: false,
+    tools: true,
+    vision: false,
+    maxOutput: 6000,
+    group: "Coding",
+    speed: "fast",
+  },
+  {
+    id: "magistral-medium",
+    name: "Magistral Medium",
+    tagline: "Mistral's reasoning model for tricky bugs",
+    tags: ["Reasoning", "Debugging", "Tools"],
+    cost: 120,
+    providerKey: "mistral",
+    provider: "magistral-medium-latest",
     thinking: true,
     tools: true,
     vision: false,
+    maxOutput: 6000,
     group: "Coding",
-    speed: "fast",
+    speed: "balanced",
+  },
+
+  // ---------- Open source / vision ----------
+  {
+    id: "qwen3-vl-plus",
+    name: "Qwen3 VL Plus",
+    tagline: "Qwen vision model — screenshots straight to code",
+    tags: ["Vision", "OCR", "Screenshot → UI"],
+    cost: 130,
+    providerKey: "qwen",
+    provider: "qwen3-vl-plus",
+    thinking: true,
+    tools: true,
+    vision: true,
+    maxOutput: 6000,
+    group: "Open source",
+    speed: "balanced",
   },
   {
     id: "mistral-medium",
@@ -250,67 +361,25 @@ export const CODEX_MODELS: CodexModel[] = [
     cost: 110,
     providerKey: "mistral",
     provider: "mistral-medium-latest",
-    thinking: true,
+    thinking: false,
     tools: true,
     vision: true,
-    group: "Coding",
-    speed: "balanced",
-  },
-
-  // ---------- Open source ----------
-  {
-    id: "deepseek-v3",
-    name: "DeepSeek V3.1",
-    tagline: "Strong open reasoning model at low cost",
-    tags: ["Reasoning", "Cheap", "Code"],
-    cost: 90,
-    providerKey: "openrouter",
-    provider: "deepseek/deepseek-chat-v3.1",
-    thinking: true,
-    tools: true,
-    vision: false,
+    maxOutput: 6000,
     group: "Open source",
     speed: "balanced",
   },
   {
-    id: "glm-4-6",
-    name: "GLM 4.6",
-    tagline: "Zhipu's coding-focused open model",
-    tags: ["Code", "Agentic", "Long context"],
-    cost: 100,
-    providerKey: "openrouter",
-    provider: "z-ai/glm-4.6",
-    thinking: true,
-    tools: true,
-    vision: false,
-    group: "Open source",
-    speed: "balanced",
-  },
-  {
-    id: "nemotron-nano-30b",
-    name: "Nemotron 3 Nano 30B",
-    tagline: "NVIDIA Nemotron 3 Nano — quick reasoning at near-zero cost",
-    tags: ["Cheap", "Thinking", "Quick fixes"],
+    id: "gemma4-cerebras",
+    name: "Gemma 4 31B",
+    tagline: "Google's open Gemma 4 on Cerebras",
+    tags: ["Open", "Fast", "General"],
     cost: 60,
-    providerKey: "openrouter",
-    provider: "nvidia/nemotron-3-nano-30b-a3b",
-    thinking: true,
+    providerKey: "cerebras",
+    provider: "gemma-4-31b",
+    thinking: false,
     tools: true,
     vision: false,
-    group: "Open source",
-    speed: "fast",
-  },
-  {
-    id: "llama4-maverick",
-    name: "Llama 4 Maverick",
-    tagline: "Meta's multimodal MoE via OpenRouter",
-    tags: ["Vision", "Fast", "General"],
-    cost: 90,
-    providerKey: "openrouter",
-    provider: "meta-llama/llama-4-maverick",
-    thinking: true,
-    tools: true,
-    vision: true,
+    maxOutput: 4000,
     group: "Open source",
     speed: "fast",
   },
@@ -322,9 +391,10 @@ export const CODEX_MODELS: CodexModel[] = [
     cost: 60,
     providerKey: "cloudflare",
     provider: "@cf/meta/llama-4-scout-17b-16e-instruct",
-    thinking: true,
+    thinking: false,
     tools: true,
     vision: true,
+    maxOutput: 4000,
     group: "Open source",
     speed: "fast",
   },
@@ -336,9 +406,10 @@ export const CODEX_MODELS: CodexModel[] = [
     cost: 60,
     providerKey: "cloudflare",
     provider: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-    thinking: true,
+    thinking: false,
     tools: true,
     vision: false,
+    maxOutput: 4000,
     group: "Open source",
     speed: "fast",
   },
@@ -348,21 +419,43 @@ export const MODEL_GROUPS = ["Flagship", "Fast", "Coding", "Open source"] as con
 
 export const DEFAULT_MODEL_ID = "om-code";
 
-/** Ids used before the OpenMatrix rebrand / catalog cleanup. */
+/**
+ * Ordered rescue list used when the chosen model's provider refuses the request
+ * (out of credits, rate limited, model retired). These are all live-verified and
+ * spread across independent providers so a single outage can't stall a build.
+ */
+export const FALLBACK_MODEL_IDS = [
+  "glm-47-cerebras",
+  "groq-oss120b",
+  "qwen3-coder-plus",
+  "qwen3-coder-next",
+  "codestral",
+  "cf-llama33-70b",
+];
+
+/** Ids used before the OpenMatrix rebrand / catalog cleanups. */
 const LEGACY_IDS: Record<string, string> = {
   "oc-code": "om-code",
   "oc-code-max": "om-code-max",
   "oc-code-lite": "om-code-lite",
   "oc-gpt": "om-gpt",
   "oc-gpt-sol": "om-gpt-terra",
-  "cerebras-oss120b": "groq-oss120b",
-  "command-a": "glm-4-6",
-  "nemotron-super": "nemotron-nano-30b",
-  "bl-deepseek-v4-pro": "nemotron-ultra-550b",
-  "bl-qwen37-max": "qwen3-max",
+  "om-gpt-terra": "om-gpt",
+  "groq-compound": "groq-oss120b",
+  "qwen3-max": "qwen3-coder-plus",
+  "qwen-vl-max": "qwen3-vl-plus",
+  "qwen3-coder": "qwen3-coder-next",
+  "deepseek-v3": "deepseek-v4-pro",
+  "glm-4-6": "glm-52",
+  "nemotron-nano-30b": "minimax-m27",
+  "llama4-maverick": "cf-llama4-scout",
+  "command-a": "glm-52",
+  "nemotron-super": "minimax-m27",
+  "bl-deepseek-v4-pro": "deepseek-v4-pro",
+  "bl-qwen37-max": "qwen3-coder-plus",
   "bl-grok-build": "om-code-max",
-  "bl-kimi-k27-code": "qwen3-coder-plus",
-  "bl-glm-52": "glm-4-6",
+  "bl-kimi-k27-code": "kimi-k27-code",
+  "bl-glm-52": "glm-52",
 };
 
 export function getModel(id: string): CodexModel {
@@ -372,4 +465,17 @@ export function getModel(id: string): CodexModel {
     CODEX_MODELS.find((m) => m.id === DEFAULT_MODEL_ID) ??
     CODEX_MODELS[0]
   );
+}
+
+/** The chosen model followed by rescue models on other providers. */
+export function modelChain(id: string): CodexModel[] {
+  const primary = getModel(id);
+  const chain = [primary];
+  for (const fid of FALLBACK_MODEL_IDS) {
+    const m = getModel(fid);
+    if (!chain.some((c) => c.id === m.id) && !chain.some((c) => c.providerKey === m.providerKey)) {
+      chain.push(m);
+    }
+  }
+  return chain;
 }

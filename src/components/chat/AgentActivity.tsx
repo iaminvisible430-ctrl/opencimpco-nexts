@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   BookOpen,
   Brain,
   Check,
@@ -9,7 +10,9 @@ import {
   PlayCircle,
   Scissors,
   ShieldCheck,
+  Shuffle,
   Sparkles,
+  Terminal,
   Trash2,
 } from "lucide-react";
 import type { AgentStep, StepKind } from "@/lib/agent-steps";
@@ -27,7 +30,11 @@ const ICONS: Record<StepKind, typeof Brain> = {
   selftest: ShieldCheck,
   verify: Sparkles,
   resume: PlayCircle,
+  fallback: Shuffle,
+  tool: Terminal,
 };
+
+
 
 
 export function AgentActivity({ steps }: { steps: AgentStep[] }) {

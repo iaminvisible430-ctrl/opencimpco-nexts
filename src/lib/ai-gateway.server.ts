@@ -53,40 +53,6 @@ const OPENAI_COMPATIBLE: Record<
   },
 };
 
-/**
- * Several providers (Groq, Cerebras, Qwen) reject an assistant message that
- * carries `reasoning_content`, which the AI SDK re-sends on every tool
- * continuation step. That made multi-step tool runs fail with a 400 halfway
- * through a build, so strip reasoning (and any empty tool-arg noise) on the way
- * out. Reasoning is display-only for us, never conversation memory.
- */
-const sanitizingFetch: typeof fetch = async (input, init) => {
-  if (init?.body && typeof init.body === "string") {
-    try {
-      const body = JSON.parse(init.body) as {
-        messages?: Array<Record<string, unknown>>;
-      };
-      if (Array.isArray(body.messages)) {
-        let touched = false;
-        for (const m of body.messages) {
-          if ("reasoning_content" in m) {
-            delete m.reasoning_content;
-            touched = true;
-          }
-          if ("reasoning" in m) {
-            delete m.reasoning;
-            touched = true;
-          }
-        }
-        if (touched) init = { ...init, body: JSON.stringify(body) };
-      }
-    } catch {
-      // not JSON — send untouched
-    }
-  }
-  return fetch(input, init);
-};
-
 /** Cloudflare Workers AI is account-scoped, so its base URL is built at call time. */
 function cloudflareProvider() {
   const token = process.env.CLOUDFLARE_API_TOKEN;
@@ -98,7 +64,6 @@ function cloudflareProvider() {
     name: "cloudflare",
     baseURL: `https://api.cloudflare.com/client/v4/accounts/${account}/ai/v1`,
     headers: { Authorization: `Bearer ${token}` },
-    fetch: sanitizingFetch,
   });
 }
 
@@ -110,10 +75,8 @@ function compat(providerKey: Exclude<ProviderKey, "lovable" | "cloudflare">, mod
     name: providerKey,
     baseURL: cfg.baseURL,
     headers: { Authorization: `Bearer ${key}`, ...(cfg.extraHeaders ?? {}) },
-    fetch: sanitizingFetch,
   })(model);
 }
-
 
 /**
  * A vision-capable model used to OCR/describe attachments for text-only models.

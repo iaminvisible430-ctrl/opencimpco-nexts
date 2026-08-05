@@ -1,5 +1,4 @@
 import {
-  AlertTriangle,
   BookOpen,
   Brain,
   Check,
@@ -10,9 +9,7 @@ import {
   PlayCircle,
   Scissors,
   ShieldCheck,
-  Shuffle,
   Sparkles,
-  Terminal,
   Trash2,
 } from "lucide-react";
 import type { AgentStep, StepKind } from "@/lib/agent-steps";
@@ -30,11 +27,7 @@ const ICONS: Record<StepKind, typeof Brain> = {
   selftest: ShieldCheck,
   verify: Sparkles,
   resume: PlayCircle,
-  fallback: Shuffle,
-  tool: Terminal,
 };
-
-
 
 
 export function AgentActivity({ steps }: { steps: AgentStep[] }) {
@@ -45,7 +38,6 @@ export function AgentActivity({ steps }: { steps: AgentStep[] }) {
         {steps.map((s) => {
           const Icon = ICONS[s.kind];
           const active = s.state === "active";
-          const failed = s.state === "error";
           return (
             <li
               key={s.id}
@@ -59,9 +51,7 @@ export function AgentActivity({ steps }: { steps: AgentStep[] }) {
                   "grid h-5 w-5 shrink-0 place-items-center rounded-md",
                   active
                     ? "bg-[oklch(0.8_0.12_190_/_0.16)] text-[color:var(--signal)]"
-                    : failed
-                      ? "bg-[oklch(0.7_0.19_25_/_0.16)] text-[color:var(--destructive)]"
-                      : "bg-[oklch(1_0_0_/_0.06)] text-muted-foreground",
+                    : "bg-[oklch(1_0_0_/_0.06)] text-muted-foreground",
                 )}
               >
                 {active ? (
@@ -73,19 +63,14 @@ export function AgentActivity({ steps }: { steps: AgentStep[] }) {
               <span
                 className={cn(
                   "min-w-0 flex-1 truncate font-medium",
-                  active ? "shimmer-text" : failed ? "text-[color:var(--destructive)]" : "text-muted-foreground",
+                  active ? "shimmer-text" : "text-muted-foreground",
                 )}
               >
                 {s.label}
                 {s.detail ? <span className="opacity-70"> · {s.detail}</span> : null}
               </span>
-              {failed ? (
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[color:var(--destructive)]" />
-              ) : (
-                !active && <Check className="h-3.5 w-3.5 shrink-0 text-[color:var(--success)]" />
-              )}
+              {!active && <Check className="h-3.5 w-3.5 shrink-0 text-[color:var(--success)]" />}
             </li>
-
           );
         })}
       </ul>

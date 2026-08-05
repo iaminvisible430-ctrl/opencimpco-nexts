@@ -1,9 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
-import { generateText, streamText, tool, stepCountIs, type LanguageModel, type ModelMessage } from "ai";
+import { generateText, streamText, tool, stepCountIs, type ModelMessage } from "ai";
 import { z } from "zod";
-import { DEFAULT_MODEL_ID, getModel, modelChain, type CodexModel } from "@/lib/models";
-
+import { DEFAULT_MODEL_ID, getModel } from "@/lib/models";
 import { splitAttachments } from "@/lib/parse-thinking";
 import { SYSTEM_PROMPT } from "@/lib/prompt";
 
@@ -120,23 +119,11 @@ class Workspace {
     return f ? { path, code: f.code } : { error: `No such file: ${path}` };
   }
   write(path: string, code: string) {
-    // Some models re-issue an identical write in a loop instead of moving on.
-    // Answer the repeat with an explicit stop instruction rather than looping.
-    const existing = this.files.get(path);
-    if (existing && existing.code === code) {
-      return {
-        ok: true,
-        path,
-        bytes: code.length,
-        note: "This file already has exactly this content. Do not write it again — move on to the next file or finish your answer.",
-      };
-    }
     this.files.set(path, { code, lang: langOf(path) });
     this.changed.add(path);
     this.deleted.delete(path);
     return { ok: true, path, bytes: code.length };
   }
-
   edit(path: string, find: string, replace: string) {
     const f = this.files.get(path);
     if (!f) return { error: `No such file: ${path}. Use write_file to create it.` };
@@ -324,24 +311,63 @@ export const Route = createFileRoute("/api/chat")({
 
           if (!messages.length) return new Response("No messages to send", { status: 400 });
 
-          // The chosen model first, then rescue models on independent providers so a
-          // provider running out of credits never stalls the build.
-          const chain: CodexModel[] = [];
-          for (const candidate of modelChain(model.id)) {
-            try {
-              chain.push({ ...candidate, resolved: resolveModel(candidate) } as CodexModel & {
-                resolved: LanguageModel;
-              });
-            } catch {
-              // provider key missing — skip it silently
-            }
-          }
-          if (!chain.length) {
-            return new Response("No AI provider is configured for this model.", { status: 500 });
+          let languageModel;
+          try {
+            languageModel = resolveModel(model);
+          } catch (e) {
+            return new Response(e instanceof Error ? e.message : "model unavailable", { status: 500 });
           }
 
           const ws = new Workspace(body.files ?? []);
           const system = body.context ? `${SYSTEM_PROMPT}\n\n${body.context}` : SYSTEM_PROMPT;
+
+          const tools = {
+            web_search: tool({
+              description:
+                "Search the live web for current documentation, APIs, news or facts. Returns up to 5 results with title, snippet and URL.",
+              inputSchema: z.object({ query: z.string() }),
+              execute: async ({ query }) => webSearch(query),
+            }),
+            fetch_page: tool({
+              description:
+                "Fetch a URL and return its readable text. Use it after web_search to read the actual documentation page before writing code.",
+              inputSchema: z.object({ url: z.string() }),
+              execute: async ({ url: u }) => fetchPage(u),
+            }),
+            list_files: tool({
+              description: "List every file path in the live project.",
+              inputSchema: z.object({}),
+              execute: async () => ({ files: ws.list() }),
+            }),
+            read_file: tool({
+              description: "Read the full current contents of one project file. Always read before editing.",
+              inputSchema: z.object({ path: z.string() }),
+              execute: async ({ path }) => ws.read(path),
+            }),
+            write_file: tool({
+              description:
+                "Create a new file or fully replace an existing one. Use full project paths such as src/App.jsx.",
+              inputSchema: z.object({ path: z.string(), content: z.string() }),
+              execute: async ({ path, content }) => ws.write(path, content),
+            }),
+            edit_file: tool({
+              description:
+                "Surgically replace an exact snippet inside a file. `find` must appear exactly once, copied verbatim from the current file. Preferred over rewriting whole files.",
+              inputSchema: z.object({ path: z.string(), find: z.string(), replace: z.string() }),
+              execute: async ({ path, find, replace }) => ws.edit(path, find, replace),
+            }),
+            delete_file: tool({
+              description: "Delete a file from the project. Only when the user asked for it.",
+              inputSchema: z.object({ path: z.string() }),
+              execute: async ({ path }) => ws.remove(path),
+            }),
+            check_project: tool({
+              description:
+                "Static self-test of the whole project: missing entry file, unresolved relative imports, unbalanced braces, placeholders. Run after your edits.",
+              inputSchema: z.object({}),
+              execute: async () => ws.check(),
+            }),
+          };
 
           const encoder = new TextEncoder();
           const stream = new ReadableStream({
@@ -351,177 +377,33 @@ export const Route = createFileRoute("/api/chat")({
                 full += s;
                 controller.enqueue(encoder.encode(s));
               };
-              const marker = (kind: string, label: string) =>
-                push(`\n\n[[oc:${kind}:${String(label).replace(/[\]\n]/g, " ").slice(0, 120)}]]\n\n`);
-              const result = (ok: boolean, label = "") =>
-                push(`[[oc:${ok ? "ok" : "err"}:${String(label).replace(/[\]\n]/g, " ").slice(0, 120)}]]\n\n`);
-
-              /** Wrap a tool so every call opens a timeline row and closes it with ok/err. */
-              function traced<I>(
-                kind: string,
-                label: (i: I) => string,
-                run: (i: I) => Promise<Record<string, unknown>>,
-              ) {
-                return async (input: I) => {
-                  marker(kind, label(input));
-                  const out = await run(input);
-                  result(!("error" in out), typeof out.error === "string" ? out.error : "");
-                  return out;
-                };
-              }
-
-              const tools = {
-                web_search: tool({
-                  description:
-                    "Search the live web for current documentation, APIs, news or facts. Returns up to 5 results with title, snippet and URL.",
-                  inputSchema: z.object({ query: z.string() }),
-                  execute: traced<{ query: string }>(
-                    "search",
-                    (i) => i.query,
-                    async ({ query }) => webSearch(query),
-                  ),
-                }),
-                fetch_page: tool({
-                  description:
-                    "Fetch a URL and return its readable text. Use it after web_search to read the actual documentation page before writing code.",
-                  inputSchema: z.object({ url: z.string() }),
-                  execute: traced<{ url: string }>(
-                    "read",
-                    (i) => i.url,
-                    async ({ url: u }) => fetchPage(u),
-                  ),
-                }),
-                list_files: tool({
-                  description: "List every file path in the live project.",
-                  inputSchema: z.object({}),
-                  execute: traced<Record<string, never>>(
-                    "ls",
-                    () => `${ws.list().length} files`,
-                    async () => ({ files: ws.list() }),
-                  ),
-                }),
-                read_file: tool({
-                  description: "Read the full current contents of one project file. Always read before editing.",
-                  inputSchema: z.object({ path: z.string() }),
-                  execute: traced<{ path: string }>(
-                    "cat",
-                    (i) => i.path,
-                    async ({ path }) => ws.read(path),
-                  ),
-                }),
-                write_file: tool({
-                  description:
-                    "Create a new file or fully replace an existing one. Use full project paths such as src/App.jsx.",
-                  inputSchema: z.object({ path: z.string(), content: z.string() }),
-                  execute: traced<{ path: string; content: string }>(
-                    "write",
-                    (i) => i.path,
-                    async ({ path, content }) => ws.write(path, content),
-                  ),
-                }),
-                edit_file: tool({
-                  description:
-                    "Surgically replace an exact snippet inside a file. `find` must appear exactly once, copied verbatim from the current file. Preferred over rewriting whole files.",
-                  inputSchema: z.object({ path: z.string(), find: z.string(), replace: z.string() }),
-                  execute: traced<{ path: string; find: string; replace: string }>(
-                    "edit",
-                    (i) => i.path,
-                    async ({ path, find, replace }) => ws.edit(path, find, replace),
-                  ),
-                }),
-                delete_file: tool({
-                  description: "Delete a file from the project. Only when the user asked for it.",
-                  inputSchema: z.object({ path: z.string() }),
-                  execute: traced<{ path: string }>(
-                    "rm",
-                    (i) => i.path,
-                    async ({ path }) => ws.remove(path),
-                  ),
-                }),
-                check_project: tool({
-                  description:
-                    "Static self-test of the whole project: missing entry file, unresolved relative imports, unbalanced braces, placeholders. Run after your edits.",
-                  inputSchema: z.object({}),
-                  execute: traced<Record<string, never>>(
-                    "check",
-                    () => "static analysis",
-                    async () => ws.check(),
-                  ),
-                }),
-              };
-
-              /**
-               * Weaker models sometimes type a tool call into the answer text instead of
-               * using the tool channel. Recover those so the file still lands in the
-               * project instead of being silently dropped.
-               */
-              function salvageToolCalls(text: string) {
-                const candidates: string[] = [];
-                for (const re of [
-                  /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g,
-                  /```(?:json|tool_call|tool_code)?\s*(\{[\s\S]*?\})\s*```/g,
-                ]) {
-                  for (const m of text.matchAll(re)) candidates.push(m[1]);
-                }
-                for (const raw of candidates) {
-                  let parsed: Record<string, unknown>;
-                  try {
-                    parsed = JSON.parse(raw);
-                  } catch {
-                    continue;
-                  }
-                  const name = String(parsed.name ?? parsed.tool ?? parsed.function ?? "");
-                  const args = (parsed.arguments ?? parsed.parameters ?? parsed.args ?? {}) as Record<
-                    string,
-                    unknown
-                  >;
-                  const path = typeof args.path === "string" ? args.path : "";
-                  if (!path) continue;
-                  let out: Record<string, unknown> | null = null;
-                  if (name === "write_file" && typeof args.content === "string")
-                    out = ws.write(path, args.content);
-                  else if (
-                    name === "edit_file" &&
-                    typeof args.find === "string" &&
-                    typeof args.replace === "string"
-                  )
-                    out = ws.edit(path, args.find, args.replace);
-                  else if (name === "delete_file") out = ws.remove(path);
-                  if (!out) continue;
-                  marker("salvage", `${name} → ${path}`);
-                  result(!("error" in out), typeof out.error === "string" ? out.error : "");
-                }
-              }
 
               /** One streaming pass. Returns the finish reason so we can resume. */
-              async function pass(
-                convo: ModelMessage[],
-                mdl: CodexModel & { resolved: LanguageModel },
-              ): Promise<{ reason: string; text: string; chars: number }> {
+              async function pass(convo: ModelMessage[]): Promise<{ reason: string; text: string }> {
                 let reasoningOpen = false;
                 let text = "";
-                let chars = 0;
-                const res = streamText({
-                  model: mdl.resolved,
+                const result = streamText({
+                  model: languageModel!,
                   system,
                   messages: convo,
-                  stopWhen: stepCountIs(mdl.tools ? 50 : 1),
-                  // Providers default to their model's full window (32k-64k), which free
-                  // tiers refuse outright. Every non-Lovable model pins its own ceiling.
-                  ...(mdl.providerKey === "lovable" ? {} : { maxOutputTokens: mdl.maxOutput ?? 4000 }),
-                  ...(mdl.thinking && mdl.providerKey === "openrouter"
+                  stopWhen: stepCountIs(model.tools ? 50 : 1),
+                  // Third-party providers default to huge budgets that some accounts cannot
+                  // afford, and Groq's free tier rejects large per-request token budgets.
+                  ...(model.providerKey === "lovable"
+                    ? {}
+                    : { maxOutputTokens: model.providerKey === "groq" ? 3500 : 8000 }),
+                  ...(model.thinking && model.providerKey === "openrouter"
                     ? { providerOptions: { openrouter: { reasoning: { effort: "medium" } } } }
                     : {}),
-                  ...(mdl.tools ? { tools } : {}),
+                  ...(model.tools ? { tools } : {}),
                 });
 
-                for await (const part of res.fullStream) {
+                for await (const part of result.fullStream) {
                   if (part.type === "reasoning-delta") {
                     if (!reasoningOpen) {
                       reasoningOpen = true;
                       push("<thinking>");
                     }
-                    chars += part.text.length;
                     push(part.text);
                   } else if (part.type === "text-delta") {
                     if (reasoningOpen) {
@@ -529,72 +411,61 @@ export const Route = createFileRoute("/api/chat")({
                       push("</thinking>\n\n");
                     }
                     text += part.text;
-                    chars += part.text.length;
                     push(part.text);
                   } else if (part.type === "tool-call") {
-                    chars += 1;
+                    const input = part.input as Record<string, unknown>;
+                    const label = String(input?.query ?? input?.url ?? input?.path ?? "");
+                    const kind =
+                      part.toolName === "fetch_page"
+                        ? "read"
+                        : part.toolName === "web_search"
+                          ? "search"
+                          : part.toolName === "list_files"
+                            ? "ls"
+                            : part.toolName === "read_file"
+                              ? "cat"
+                              : part.toolName === "write_file"
+                                ? "write"
+                                : part.toolName === "edit_file"
+                                  ? "edit"
+                                  : part.toolName === "delete_file"
+                                    ? "rm"
+                                    : "check";
+                    push(`\n\n[[oc:${kind}:${label.replace(/[\]\n]/g, " ")}]]\n\n`);
                   } else if (part.type === "error") {
                     const err = part.error;
-                    throw err instanceof Error ? err : new Error(String(err));
+                    push(`\n\n[error] ${err instanceof Error ? err.message : String(err)}`);
                   }
                 }
                 if (reasoningOpen) push("</thinking>\n\n");
                 let reason = "stop";
                 try {
-                  reason = await res.finishReason;
+                  reason = await result.finishReason;
                 } catch {
                   reason = "error";
                 }
-                return { reason, text, chars };
+                return { reason, text };
               }
 
               try {
                 const convo = [...messages];
-                let active = chain[0] as CodexModel & { resolved: LanguageModel };
-                let reason = "error";
-                let text = "";
-
-                // Try the chosen model, then rescue models, but only while nothing has
-                // been streamed yet — never restart a half-written answer.
-                for (let i = 0; i < chain.length; i++) {
-                  const candidate = chain[i] as CodexModel & { resolved: LanguageModel };
-                  if (i > 0) {
-                    marker("fallback", `${chain[0].name} unavailable → ${candidate.name}`);
-                    result(true, candidate.name);
-                  }
-                  try {
-                    const out = await pass(convo, candidate);
-                    active = candidate;
-                    reason = out.reason;
-                    text = out.text;
-                    if (out.chars > 0 || out.reason !== "error") break;
-                  } catch (e) {
-                    const msg = e instanceof Error ? e.message : String(e);
-                    if (i === chain.length - 1) throw e;
-                    console.warn("[/api/chat fallback]", candidate.id, msg.slice(0, 200));
-                    continue;
-                  }
-                }
-
+                let { reason, text } = await pass(convo);
                 // Providers truncate long builds mid-file. Resume from the exact
                 // stopping point instead of leaving broken code on screen.
                 for (let i = 0; i < 3; i++) {
                   const unclosed = (text.match(/^\s*```/gm) ?? []).length % 2 === 1;
                   if (reason !== "length" && !(unclosed && reason !== "error")) break;
-                  marker("resume", "continuing");
-                  result(true, "");
+                  push(`\n\n[[oc:resume:continuing]]\n\n`);
                   convo.push({ role: "assistant", content: text } as ModelMessage);
                   convo.push({
                     role: "user",
                     content:
                       "Your previous message was cut off mid-answer. Continue from the EXACT character where you stopped. Do not repeat anything, do not restate the plan, do not reopen a fence you already opened — just continue and finish, including the Self-test and How to verify sections.",
                   } as ModelMessage);
-                  const next = await pass(convo, active);
+                  const next = await pass(convo);
                   reason = next.reason;
                   text = text + next.text;
                 }
-
-                salvageToolCalls(full);
               } catch (e) {
                 const msg = e instanceof Error ? e.message : "stream error";
                 push(`\n\n[error] ${msg}`);
@@ -636,7 +507,6 @@ export const Route = createFileRoute("/api/chat")({
               }
             },
           });
-
 
           return new Response(stream, {
             headers: {

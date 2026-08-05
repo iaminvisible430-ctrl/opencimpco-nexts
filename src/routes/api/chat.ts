@@ -120,11 +120,23 @@ class Workspace {
     return f ? { path, code: f.code } : { error: `No such file: ${path}` };
   }
   write(path: string, code: string) {
+    // Some models re-issue an identical write in a loop instead of moving on.
+    // Answer the repeat with an explicit stop instruction rather than looping.
+    const existing = this.files.get(path);
+    if (existing && existing.code === code) {
+      return {
+        ok: true,
+        path,
+        bytes: code.length,
+        note: "This file already has exactly this content. Do not write it again — move on to the next file or finish your answer.",
+      };
+    }
     this.files.set(path, { code, lang: langOf(path) });
     this.changed.add(path);
     this.deleted.delete(path);
     return { ok: true, path, bytes: code.length };
   }
+
   edit(path: string, find: string, replace: string) {
     const f = this.files.get(path);
     if (!f) return { error: `No such file: ${path}. Use write_file to create it.` };

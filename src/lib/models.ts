@@ -445,7 +445,7 @@ export const CODEX_MODELS: CodexModel[] = [
   },
 ];
 
-export const MODEL_GROUPS = ["Flagship", "Fast", "Coding", "Open source"] as const;
+export const MODEL_GROUPS = ["Flagship", "Free", "Fast", "Coding", "Open source"] as const;
 
 export const DEFAULT_MODEL_ID = "om-code";
 

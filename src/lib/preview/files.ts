@@ -222,9 +222,21 @@ function splitInnerFiles(code: string): { path: string; code: string }[] {
 export function parseProjectFiles(text: string): PFile[] {
   const files: PFile[] = [];
   let i = 0;
+  const add = (path: string, lang: string, rawCode: string) => {
+    const normalized = canonical(path, lang);
+    if (!/\.[a-zA-Z0-9]+$/.test(normalized)) return;
+    const code = rawCode.endsWith("\n") ? rawCode : rawCode + "\n";
+    const existing = files.findIndex((f) => f.path === normalized);
+    const file = { path: normalized, lang, code };
+    // A later block for the same path is a revision — keep the newest.
+    if (existing >= 0) files[existing] = file;
+    else files.push(file);
+    i++;
+  };
+
   for (const block of scanFences(text)) {
     const info = block.info.trim();
-    let code = block.code;
+    const code = block.code;
     const tokens = info.split(/\s+/).filter(Boolean);
     let lang = (tokens[0] || "").toLowerCase();
     let path = "";
@@ -249,19 +261,23 @@ export function parseProjectFiles(text: string): PFile[] {
     lang = ALIAS[lang] ?? lang;
     // Skip non-file blocks (shell snippets, plain prose fences) with no real code.
     if (!path && !lang && !code.trim()) continue;
+
+    // One fence holding several files, separated by path markers.
+    const inner = splitInnerFiles(code);
+    if (inner.length) {
+      for (const part of inner) {
+        const ext = part.path.split(".").pop()!.toLowerCase();
+        add(part.path, EXT_LANG[ext] ?? lang, part.code);
+      }
+      continue;
+    }
+
     if (!path) path = defaultPath(lang, i);
-    const normalized = canonical(path, lang);
-    if (!/\.[a-zA-Z0-9]+$/.test(normalized)) continue;
-    if (!code.endsWith("\n")) code += "\n";
-    const existing = files.findIndex((f) => f.path === normalized);
-    const file = { path: normalized, lang, code };
-    // A later block for the same path is a revision — keep the newest.
-    if (existing >= 0) files[existing] = file;
-    else files.push(file);
-    i++;
+    add(path, lang, code);
   }
   return files;
 }
+
 
 /** Paths the agent explicitly deleted, encoded as `[[oc:rm:path]]`. */
 export function parseFileDeletions(text: string): string[] {

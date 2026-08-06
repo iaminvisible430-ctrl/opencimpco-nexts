@@ -155,6 +155,7 @@ function scanFences(text: string): RawBlock[] {
     // A fence longer than 3 with no language is usually a wrapper around real
     // fenced files — unwrap it and let the inner fences be parsed normally.
     const close = new RegExp(`^\\s*\\${char}{${len},}\\s*$`);
+    const reopen = new RegExp(`^\\s*\\${char}{3,}\\s*\\S`);
     const body: string[] = [];
     i++;
     let closed = false;
@@ -164,9 +165,13 @@ function scanFences(text: string): RawBlock[] {
         i++;
         break;
       }
+      // A model that forgot the closing fence starts the next file with an
+      // opening fence — end this block here without consuming that line.
+      if (reopen.test(lines[i])) break;
       body.push(lines[i]);
       i++;
     }
+
     const code = body.join("\n");
     if (len > 3 && !info.trim() && /^\s*(`{3}|~{3})\S/m.test(code)) {
       blocks.push(...scanFences(code));

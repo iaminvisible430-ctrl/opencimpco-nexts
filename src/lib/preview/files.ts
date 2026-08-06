@@ -251,7 +251,7 @@ export function parseProjectFiles(text: string): PFile[] {
     }
     // `\`\`\`src/Card.jsx` — the first token is the path, so keep its original casing.
     if (!path && /\.[a-zA-Z0-9]+$/.test(lang)) {
-      path = lang;
+      path = tokens[0];
       lang = "";
     }
     if (!path) path = pathFromProse(block.before.split("\n").filter((l) => l.trim()).pop() ?? "");

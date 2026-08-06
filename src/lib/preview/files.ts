@@ -149,23 +149,38 @@ function scanFences(text: string): RawBlock[] {
       i++;
       continue;
     }
-    const marker = open[1][0].repeat(3);
+    const char = open[1][0];
+    const len = open[1].length;
     const info = open[2] ?? "";
+    // A fence longer than 3 with no language is usually a wrapper around real
+    // fenced files — unwrap it and let the inner fences be parsed normally.
+    const close = new RegExp(`^\\s*\\${char}{${len},}\\s*$`);
+    const reopen = new RegExp(`^\\s*\\${char}{3,}\\s*\\S`);
     const body: string[] = [];
     i++;
     let closed = false;
     while (i < lines.length) {
-      if (new RegExp(`^\\s*${marker === "`" ? "`" : "~"}{3,}\\s*$`).test(lines[i])) {
+      if (close.test(lines[i])) {
         closed = true;
         i++;
         break;
       }
+      // A model that forgot the closing fence starts the next file with an
+      // opening fence — end this block here without consuming that line.
+      if (reopen.test(lines[i])) break;
       body.push(lines[i]);
       i++;
     }
+
+    const code = body.join("\n");
+    if (len > 3 && !info.trim() && /^\s*(`{3}|~{3})\S/m.test(code)) {
+      blocks.push(...scanFences(code));
+      prose = [];
+      continue;
+    }
     blocks.push({
       info,
-      code: body.join("\n") + (closed ? "\n" : ""),
+      code: code + (closed ? "\n" : ""),
       before: prose.slice(-3).join("\n"),
       closed,
     });
@@ -173,6 +188,33 @@ function scanFences(text: string): RawBlock[] {
   }
   return blocks;
 }
+
+const INNER_SPLIT =
+  /^[ \t]*(?:\/\/|#|<!--|\/\*)?[ \t]*(?:={2,}|-{2,}|\*{2,})?[ \t]*(?:file[ \t]*[:=][ \t]*)?((?:[\w.@-]+\/)*[\w.-]+\.(?:jsx|tsx|js|ts|css|html|json|md|py|sql|vue|svelte))[ \t]*(?:={2,}|-{2,}|\*{2,})?[ \t]*(?:-->|\*\/)?[ \t]*$/;
+
+/**
+ * Some models put an entire multi-file project inside a single fence, separating
+ * files with `// src/App.jsx`, `=== src/App.jsx ===` or `--- src/App.jsx ---`
+ * markers. Split those into real files instead of compiling only the first one.
+ */
+function splitInnerFiles(code: string): { path: string; code: string }[] {
+  const lines = code.split("\n");
+  const marks: { path: string; at: number }[] = [];
+  for (let n = 0; n < lines.length; n++) {
+    const m = INNER_SPLIT.exec(lines[n]);
+    if (m) marks.push({ path: m[1], at: n });
+  }
+  if (marks.length < 2) return [];
+  const out: { path: string; code: string }[] = [];
+  for (let k = 0; k < marks.length; k++) {
+    const start = marks[k].at + 1;
+    const end = k + 1 < marks.length ? marks[k + 1].at : lines.length;
+    const body = lines.slice(start, end).join("\n").trim();
+    if (body) out.push({ path: marks[k].path, code: body + "\n" });
+  }
+  return out.length >= 2 ? out : [];
+}
+
 
 /**
  * Parse fenced blocks into a virtual project.
@@ -185,9 +227,21 @@ function scanFences(text: string): RawBlock[] {
 export function parseProjectFiles(text: string): PFile[] {
   const files: PFile[] = [];
   let i = 0;
+  const add = (path: string, lang: string, rawCode: string) => {
+    const normalized = canonical(path, lang);
+    if (!/\.[a-zA-Z0-9]+$/.test(normalized)) return;
+    const code = rawCode.endsWith("\n") ? rawCode : rawCode + "\n";
+    const existing = files.findIndex((f) => f.path === normalized);
+    const file = { path: normalized, lang, code };
+    // A later block for the same path is a revision — keep the newest.
+    if (existing >= 0) files[existing] = file;
+    else files.push(file);
+    i++;
+  };
+
   for (const block of scanFences(text)) {
     const info = block.info.trim();
-    let code = block.code;
+    const code = block.code;
     const tokens = info.split(/\s+/).filter(Boolean);
     let lang = (tokens[0] || "").toLowerCase();
     let path = "";
@@ -195,8 +249,9 @@ export function parseProjectFiles(text: string): PFile[] {
       const cleaned = t.replace(/^(file|path|title)=/, "").replace(/["'`]/g, "");
       if (/\.[a-zA-Z0-9]+$/.test(cleaned)) path = cleaned;
     }
+    // `\`\`\`src/Card.jsx` — the first token is the path, so keep its original casing.
     if (!path && /\.[a-zA-Z0-9]+$/.test(lang)) {
-      path = lang;
+      path = tokens[0];
       lang = "";
     }
     if (!path) path = pathFromProse(block.before.split("\n").filter((l) => l.trim()).pop() ?? "");
@@ -212,19 +267,23 @@ export function parseProjectFiles(text: string): PFile[] {
     lang = ALIAS[lang] ?? lang;
     // Skip non-file blocks (shell snippets, plain prose fences) with no real code.
     if (!path && !lang && !code.trim()) continue;
+
+    // One fence holding several files, separated by path markers.
+    const inner = splitInnerFiles(code);
+    if (inner.length) {
+      for (const part of inner) {
+        const ext = part.path.split(".").pop()!.toLowerCase();
+        add(part.path, EXT_LANG[ext] ?? lang, part.code);
+      }
+      continue;
+    }
+
     if (!path) path = defaultPath(lang, i);
-    const normalized = canonical(path, lang);
-    if (!/\.[a-zA-Z0-9]+$/.test(normalized)) continue;
-    if (!code.endsWith("\n")) code += "\n";
-    const existing = files.findIndex((f) => f.path === normalized);
-    const file = { path: normalized, lang, code };
-    // A later block for the same path is a revision — keep the newest.
-    if (existing >= 0) files[existing] = file;
-    else files.push(file);
-    i++;
+    add(path, lang, code);
   }
   return files;
 }
+
 
 /** Paths the agent explicitly deleted, encoded as `[[oc:rm:path]]`. */
 export function parseFileDeletions(text: string): string[] {

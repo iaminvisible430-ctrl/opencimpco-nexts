@@ -30,7 +30,7 @@ export interface CodexModel {
   /** Native image understanding. Non-vision models get OCR pre-processing instead. */
   vision: boolean;
   /** Grouping label used by the model picker. */
-  group: "Flagship" | "Fast" | "Coding" | "Open source";
+  group: "Flagship" | "Free" | "Fast" | "Coding" | "Open source";
   /** Rough speed hint used for the icon in the model picker. */
   speed: "fast" | "balanced" | "deep";
 }
@@ -99,7 +99,108 @@ export const CODEX_MODELS: CodexModel[] = [
     speed: "deep",
   },
 
+  // ---------- Free (verified zero-cost upstream, live-tested) ----------
+  {
+    id: "free-nemotron-ultra",
+    name: "Nemotron Ultra 550B (Free)",
+    tagline: "NVIDIA's 550B flagship reasoner at zero upstream cost",
+    tags: ["Free", "550B", "Frontier"],
+    cost: 0,
+    providerKey: "openrouter",
+    provider: "nvidia/nemotron-3-ultra-550b-a55b:free",
+    thinking: true,
+    tools: true,
+    vision: false,
+    group: "Free",
+    speed: "deep",
+  },
+  {
+    id: "free-nemotron-super",
+    name: "Nemotron Super 120B (Free)",
+    tagline: "Balanced 120B reasoning — free and fast enough to iterate",
+    tags: ["Free", "Reasoning", "Multi-file"],
+    cost: 0,
+    providerKey: "openrouter",
+    provider: "nvidia/nemotron-3-super-120b-a12b:free",
+    thinking: true,
+    tools: true,
+    vision: false,
+    group: "Free",
+    speed: "balanced",
+  },
+  {
+    id: "free-laguna-s",
+    name: "Poolside Laguna S 2.1 (Free)",
+    tagline: "Coding-specialised model, free tier",
+    tags: ["Free", "Code", "Refactors"],
+    cost: 0,
+    providerKey: "openrouter",
+    provider: "poolside/laguna-s-2.1:free",
+    thinking: true,
+    tools: true,
+    vision: false,
+    group: "Free",
+    speed: "balanced",
+  },
+  {
+    id: "free-north-mini-code",
+    name: "Cohere North Mini Code (Free)",
+    tagline: "Cohere's compact coder — quick free edits",
+    tags: ["Free", "Code", "Fast"],
+    cost: 0,
+    providerKey: "openrouter",
+    provider: "cohere/north-mini-code:free",
+    thinking: true,
+    tools: true,
+    vision: false,
+    group: "Free",
+    speed: "fast",
+  },
+  {
+    id: "free-nemotron-vl",
+    name: "Nemotron Nano 12B VL (Free)",
+    tagline: "Free vision model — screenshots and mockups to code",
+    tags: ["Free", "Vision", "OCR"],
+    cost: 0,
+    providerKey: "openrouter",
+    provider: "nvidia/nemotron-nano-12b-v2-vl:free",
+    thinking: true,
+    tools: true,
+    vision: true,
+    group: "Free",
+    speed: "fast",
+  },
+  {
+    id: "free-gpt-oss-20b",
+    name: "GPT-OSS 20B (Free)",
+    tagline: "OpenAI open-weight 20B, free and reliable for small tasks",
+    tags: ["Free", "Tools", "Quick fixes"],
+    cost: 0,
+    providerKey: "openrouter",
+    provider: "openai/gpt-oss-20b:free",
+    thinking: true,
+    tools: true,
+    vision: false,
+    group: "Free",
+    speed: "fast",
+  },
+  {
+    id: "free-ling-flash",
+    name: "Ling 3.0 Flash (Free)",
+    tagline: "InclusionAI Ling 3.0 — free high-throughput coding",
+    tags: ["Free", "Fast", "General"],
+    cost: 0,
+    providerKey: "openrouter",
+    provider: "inclusionai/ling-3.0-flash:free",
+    thinking: true,
+    tools: true,
+    vision: false,
+    group: "Free",
+    speed: "fast",
+  },
+
   // ---------- Fast ----------
+
   {
     id: "om-code",
     name: "OpenMatrix Code",
@@ -344,7 +445,7 @@ export const CODEX_MODELS: CodexModel[] = [
   },
 ];
 
-export const MODEL_GROUPS = ["Flagship", "Fast", "Coding", "Open source"] as const;
+export const MODEL_GROUPS = ["Flagship", "Free", "Fast", "Coding", "Open source"] as const;
 
 export const DEFAULT_MODEL_ID = "om-code";
 

@@ -30,7 +30,7 @@ export interface CodexModel {
   /** Native image understanding. Non-vision models get OCR pre-processing instead. */
   vision: boolean;
   /** Grouping label used by the model picker. */
-  group: "Flagship" | "Fast" | "Coding" | "Open source";
+  group: "Flagship" | "Free" | "Fast" | "Coding" | "Open source";
   /** Rough speed hint used for the icon in the model picker. */
   speed: "fast" | "balanced" | "deep";
 }

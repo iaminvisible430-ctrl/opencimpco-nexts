@@ -249,6 +249,7 @@ export function parseProjectFiles(text: string): PFile[] {
       const cleaned = t.replace(/^(file|path|title)=/, "").replace(/["'`]/g, "");
       if (/\.[a-zA-Z0-9]+$/.test(cleaned)) path = cleaned;
     }
+    // `\`\`\`src/Card.jsx` — the first token is the path, so keep its original casing.
     if (!path && /\.[a-zA-Z0-9]+$/.test(lang)) {
       path = lang;
       lang = "";

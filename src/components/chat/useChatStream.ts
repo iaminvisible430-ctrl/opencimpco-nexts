@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { recordRequest } from "@/lib/ai-telemetry";
 
 export function useChatStream(chatId: string, onDone: () => void | Promise<void>) {
   const [streaming, setStreaming] = useState<string | null>(null);
@@ -22,6 +23,9 @@ export function useChatStream(chatId: string, onDone: () => void | Promise<void>
       setStreaming("");
       const controller = new AbortController();
       abort.current = controller;
+      const startedAt = Date.now();
+      let bytes = 0;
+      let failure: string | undefined;
       try {
         const { data: sess } = await supabase.auth.getSession();
         const token = sess.session?.access_token;
@@ -43,16 +47,32 @@ export function useChatStream(chatId: string, onDone: () => void | Promise<void>
           const { value, done } = await reader.read();
           if (done) break;
           acc += dec.decode(value, { stream: true });
+          bytes = acc.length;
           setStreaming(acc);
         }
       } catch (e) {
         if ((e as Error).name !== "AbortError") {
           const msg = e instanceof Error ? e.message : "stream failed";
+          failure = msg;
           setError(msg);
           toast.error(msg);
+        } else {
+          failure = "cancelled";
         }
       } finally {
         abort.current = null;
+        // Feed the AI panel: one row per request with latency and payload size.
+        recordRequest(chatId, {
+          id: `${startedAt}`,
+          model,
+          provider: "",
+          startedAt,
+          ms: Date.now() - startedAt,
+          bytes,
+          contextChars: context?.length ?? 0,
+          ok: !failure,
+          ...(failure ? { error: failure } : {}),
+        });
         // Keep the streamed text on screen until the persisted message has been
         // refetched, otherwise the answer visibly disappears for a moment.
         try {
@@ -68,4 +88,5 @@ export function useChatStream(chatId: string, onDone: () => void | Promise<void>
 
   return { streaming, error, run, stop };
 }
+
 

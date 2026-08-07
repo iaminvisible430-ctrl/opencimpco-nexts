@@ -146,6 +146,233 @@ class Workspace {
     this.deleted.add(path);
     return { ok: true, path };
   }
+  rename(from: string, to: string) {
+    const f = this.files.get(from);
+    if (!f) return { error: `No such file: ${from}` };
+    if (this.files.has(to)) return { error: `${to} already exists — pick another path.` };
+    this.files.set(to, { code: f.code, lang: langOf(to) });
+    this.files.delete(from);
+    this.changed.add(to);
+    this.changed.delete(from);
+    this.deleted.add(from);
+    return { ok: true, from, to };
+  }
+
+  /** Recorded dependencies. The preview resolves bare imports from a CDN. */
+  deps = new Set<string>();
+  install(pkg: string, version = "latest") {
+    const name = pkg.trim().replace(/\s+/g, "");
+    if (!name) return { error: "package name is required" };
+    this.deps.add(name);
+    const pj = this.files.get("package.json");
+    if (pj) {
+      try {
+        const json = JSON.parse(pj.code) as Record<string, unknown>;
+        const deps = (json.dependencies as Record<string, string>) ?? {};
+        deps[name] = version === "latest" ? "*" : version;
+        json.dependencies = deps;
+        this.write("package.json", JSON.stringify(json, null, 2) + "\n");
+      } catch {
+        /* leave a malformed package.json alone */
+      }
+    }
+    return {
+      ok: true,
+      installed: name,
+      note: "The preview resolves bare imports from esm.sh automatically — just import it.",
+    };
+  }
+
+  format(path: string) {
+    const f = this.files.get(path);
+    if (!f) return { error: `No such file: ${path}` };
+    const code =
+      f.code
+        .replace(/\t/g, "  ")
+        .split("\n")
+        .map((l) => l.replace(/[ \t]+$/, ""))
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/\s+$/, "") + "\n";
+    const changed = code !== f.code;
+    if (changed) {
+      this.files.set(path, { code, lang: f.lang });
+      this.changed.add(path);
+    }
+    return { ok: true, path, changed };
+  }
+
+  /** Deeper review than check(): quality, a11y and leftovers. */
+  lint() {
+    const warnings: string[] = [];
+    for (const [path, f] of this.files) {
+      const lines = f.code.split("\n");
+      lines.forEach((l, i) => {
+        const at = `${path}:${i + 1}`;
+        if (/console\.log\(/.test(l)) warnings.push(`${at}: leftover console.log`);
+        if (/<img(?![^>]*\balt=)[^>]*>/.test(l)) warnings.push(`${at}: <img> without alt text`);
+        if (/<div[^>]*onClick=/.test(l)) warnings.push(`${at}: click handler on a div — use a button`);
+        if (/\.map\(\s*\(?[a-zA-Z]/.test(l) && /<[A-Za-z]/.test(l) && !/key=/.test(l))
+          warnings.push(`${at}: list item may be missing a React key`);
+        if (/(?:width|height|color|background):\s*#?[0-9a-fA-F]{3,6}\b/.test(l) && /style=\{\{/.test(l))
+          warnings.push(`${at}: hardcoded inline colour — use a token`);
+        if (l.length > 220) warnings.push(`${at}: very long line (${l.length} chars)`);
+      });
+    }
+    const base = this.check();
+    return {
+      ok: base.ok && warnings.length === 0,
+      errors: base.problems,
+      warnings: warnings.slice(0, 60),
+    };
+  }
+
+  /** Structural map so the agent can reason about the project without reading it all. */
+  index() {
+    const out = [...this.files.entries()].map(([path, f]) => {
+      const imports = [...f.code.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
+      const exports = [...f.code.matchAll(/export\s+(?:default\s+)?(?:function|const|class)\s+([A-Za-z0-9_$]+)/g)].map(
+        (m) => m[1],
+      );
+      return {
+        path,
+        lang: f.lang,
+        lines: f.code.split("\n").length,
+        bytes: f.code.length,
+        hasDefaultExport: /export\s+default/.test(f.code),
+        exports: exports.slice(0, 12),
+        imports: imports.slice(0, 20),
+      };
+    });
+    return { files: out, entry: out.find((f) => /^src\/App\.(jsx|tsx)$/.test(f.path))?.path ?? null };
+  }
+
+  /** Write a README from the real file list. */
+  docs(title = "Project") {
+    const idx = this.index();
+    const body = [
+      `# ${title}`,
+      "",
+      "Generated with OpenMatrix Agent.",
+      "",
+      "## Files",
+      "",
+      ...idx.files.map((f) => `- \`${f.path}\` — ${f.lines} lines${f.exports.length ? `, exports ${f.exports.join(", ")}` : ""}`),
+      "",
+      "## Run locally",
+      "",
+      "```bash",
+      "npm install",
+      "npm run dev",
+      "```",
+      "",
+      ...(this.deps.size ? ["## Dependencies", "", ...[...this.deps].map((d) => `- ${d}`), ""] : []),
+    ].join("\n");
+    this.write("README.md", body);
+    return { ok: true, path: "README.md", bytes: body.length };
+  }
+
+  /** Static "build": resolve the module graph and report like a bundler would. */
+  build() {
+    const started = Date.now();
+    const problems = this.check();
+    const idx = this.index();
+    const bytes = [...this.files.values()].reduce((n, f) => n + f.code.length, 0);
+    return {
+      ok: problems.ok,
+      entry: idx.entry,
+      modules: idx.files.length,
+      bytes,
+      ms: Date.now() - started,
+      problems: problems.problems,
+    };
+  }
+
+  /** Sandbox shell over the project — the same commands the Terminal tab exposes. */
+  runCommand(command: string): { command: string; output: string; code: number } {
+    const cmd = command.trim();
+    const [name, ...args] = cmd.split(/\s+/);
+    const arg = args.join(" ");
+    const done = (output: string, code = 0) => ({ command: cmd, output, code });
+
+    switch (name) {
+      case "ls":
+        return done(
+          this.list()
+            .filter((p) => (arg ? p.startsWith(arg.replace(/\/$/, "") + "/") : true))
+            .join("\n") || "(empty)",
+        );
+      case "tree":
+        return done(
+          [...this.files.entries()].map(([p, f]) => `${p}  ${f.code.split("\n").length}L`).join("\n"),
+        );
+      case "cat": {
+        const f = this.files.get(arg);
+        return f ? done(f.code.slice(0, 8000)) : done(`cat: ${arg}: not found`, 1);
+      }
+      case "wc":
+        return done(
+          [...this.files.entries()]
+            .map(([p, f]) => `${String(f.code.split("\n").length).padStart(5)} ${p}`)
+            .join("\n"),
+        );
+      case "grep": {
+        if (!arg) return done("usage: grep <pattern>", 1);
+        const hits: string[] = [];
+        for (const [p, f] of this.files)
+          f.code.split("\n").forEach((l, i) => {
+            if (l.toLowerCase().includes(arg.toLowerCase())) hits.push(`${p}:${i + 1}: ${l.trim()}`);
+          });
+        return done(hits.slice(0, 60).join("\n") || "no matches");
+      }
+      case "stat":
+        return done(`files ${this.files.size}\ndeps  ${[...this.deps].join(", ") || "none"}`);
+      case "build": {
+        const r = this.build();
+        return done(
+          `entry ${r.entry ?? "none"}\nmodules ${r.modules}\nbytes ${r.bytes}\n` +
+            (r.ok ? "✓ build passed" : r.problems.map((p) => `✗ ${p}`).join("\n")),
+          r.ok ? 0 : 1,
+        );
+      }
+      case "test": {
+        const r = this.check();
+        return done(r.ok ? "✓ all checks passed" : r.problems.map((p) => `✗ ${p}`).join("\n"), r.ok ? 0 : 1);
+      }
+      case "lint": {
+        const r = this.lint();
+        return done(
+          [...r.errors.map((e) => `error ${e}`), ...r.warnings.map((w) => `warn  ${w}`)].join("\n") ||
+            "✓ no lint findings",
+          r.errors.length ? 1 : 0,
+        );
+      }
+      case "npm":
+      case "pnpm":
+      case "bun":
+      case "yarn": {
+        if (args[0] === "install" || args[0] === "add" || args[0] === "i") {
+          const pkgs = args.slice(1).filter((a) => !a.startsWith("-"));
+          if (!pkgs.length) return done("up to date, audited 0 packages");
+          pkgs.forEach((p) => this.install(p));
+          return done(`added ${pkgs.length} package(s): ${pkgs.join(", ")}`);
+        }
+        if (args[0] === "run" || args[0] === "build") return this.runCommand("build");
+        return done(`${name}: unsupported subcommand "${args[0] ?? ""}"`, 1);
+      }
+      case "echo":
+        return done(arg);
+      case "":
+      case undefined:
+        return done("", 0);
+      default:
+        return done(
+          `${name}: command not found. Available: ls, tree, cat, grep, wc, stat, build, test, lint, npm install <pkg>, echo.`,
+          127,
+        );
+    }
+  }
+
 
   /** Cheap static review so the agent can self-test without a real build. */
   check() {

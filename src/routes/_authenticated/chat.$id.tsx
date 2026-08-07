@@ -8,7 +8,7 @@ import { z } from "zod";
 import { getChat } from "@/lib/chats.functions";
 import { getProfile } from "@/lib/profile.functions";
 import { publishArtifact } from "@/lib/artifacts.functions";
-import { DEFAULT_MODEL_ID, type CodexModelId } from "@/lib/models";
+import { DEFAULT_MODEL_ID, getModel, type CodexModelId } from "@/lib/models";
 import { ModelSheet } from "@/components/ModelSheet";
 import { MessageList, type ChatMessage } from "@/components/chat/MessageList";
 import { Composer } from "@/components/chat/Composer";

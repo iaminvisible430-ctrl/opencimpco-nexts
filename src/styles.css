@@ -210,9 +210,28 @@
 .tok-attr { color: oklch(0.86 0.12 90); }
 .tok-punc { color: oklch(0.7 0.02 250); }
 
+/* Progressive blur-to-sharp reveal for streamed tokens. */
+@keyframes oc-reveal {
+  from {
+    opacity: 0;
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+.oc-reveal {
+  display: inline;
+  animation: oc-reveal 0.34s ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .shimmer-bar,
-  .shimmer-text {
+  .shimmer-text,
+  .oc-reveal {
     animation: none;
   }
 }
+

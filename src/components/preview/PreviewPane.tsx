@@ -4,6 +4,7 @@ import {
   Code2,
   CheckCircle2,
   Copy,
+  Database,
   ExternalLink,
   FileCode2,
   Monitor,
@@ -15,34 +16,49 @@ import {
 import { toast } from "sonner";
 import { buildPreviewDoc, projectKind, type PFile } from "@/lib/preview/build";
 import { analyzeProject } from "@/lib/preview/analyze";
+import { attachDbHost, type DbEvent } from "@/lib/preview/db-host";
 import { CodeEditor } from "./CodeEditor";
 import { TerminalPane } from "./TerminalPane";
 import { ShipPanel } from "./ShipPanel";
+import { SidePanel } from "./SidePanel";
 import { cn } from "@/lib/utils";
 
 type LogLine = { level: string; text: string };
 type Status = "loading" | "ok" | "error";
+
+/** The preview shim namespaces its store under this key. */
+const DB_PROJECT = "preview";
 
 export function PreviewPane({
   files,
   className,
   defaultDevice = "desktop",
   projectName,
+  chatId = "",
+  modelLabel = "",
+  provider = "",
+  contextChars = 0,
 }: {
   files: PFile[];
   className?: string;
   defaultDevice?: "mobile" | "desktop";
   projectName?: string;
+  chatId?: string;
+  modelLabel?: string;
+  provider?: string;
+  contextChars?: number;
 }) {
   const [device, setDevice] = useState<"mobile" | "desktop">(defaultDevice);
   const runnable = projectKind(files) !== null;
-  const [view, setView] = useState<"app" | "editor" | "console" | "terminal" | "ship">(
+  const [view, setView] = useState<"app" | "editor" | "console" | "terminal" | "ship" | "data">(
     runnable ? "app" : "editor",
   );
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [nonce, setNonce] = useState(0);
   const [status, setStatus] = useState<Status>("loading");
   const [logs, setLogs] = useState<LogLine[]>([]);
+  const [dbEvents, setDbEvents] = useState<DbEvent[]>([]);
+  const [dbVersion, setDbVersion] = useState(0);
   const frame = useRef<HTMLIFrameElement>(null);
 
   const merged = useMemo(
@@ -53,6 +69,18 @@ export function PreviewPane({
   const active = merged.find((f) => f.path === openPath) ?? merged[0];
   const issues = useMemo(() => analyzeProject(merged), [merged]);
   const doc = useMemo(() => (runnable ? buildPreviewDoc(merged) : ""), [merged, runnable]);
+
+  // Serve ocDB calls from the sandboxed frame, which has no storage of its own.
+  useEffect(
+    () =>
+      attachDbHost(
+        DB_PROJECT,
+        (e) => setDbEvents((l) => [...l, e].slice(-120)),
+        () => setDbVersion((v) => v + 1),
+      ),
+    [],
+  );
+
 
   useEffect(() => {
     if (!runnable) return;
@@ -102,6 +130,10 @@ export function PreviewPane({
         <Seg active={view === "ship"} onClick={() => setView("ship")}>
           <Rocket className="h-3.5 w-3.5" /> Ship
         </Seg>
+        <Seg active={view === "data"} onClick={() => setView("data")}>
+          <Database className="h-3.5 w-3.5" /> Data
+        </Seg>
+
         <Seg active={view === "console"} onClick={() => setView("console")}>
           <FileCode2 className="h-3.5 w-3.5" /> Console
           {issues.length > 0 && (
@@ -182,6 +214,22 @@ export function PreviewPane({
       {view === "terminal" && <TerminalPane files={merged} />}
 
       {view === "ship" && <ShipPanel files={merged} suggestedName={projectName} />}
+
+      {view === "data" && (
+        <SidePanel
+          project={DB_PROJECT}
+          chatId={chatId}
+          modelLabel={modelLabel}
+          provider={provider}
+          contextChars={contextChars}
+          logs={logs}
+          issues={issues}
+          dbEvents={dbEvents}
+          dbVersion={dbVersion}
+          onDbChange={() => setDbVersion((v) => v + 1)}
+        />
+      )}
+
 
       {view === "console" && (
         <div className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11px] leading-5">

@@ -55,30 +55,44 @@ function proxyShim(projectKey = "preview"): string {
   window.ocProxyUrl = viaProxy;
   window.ocFetch = function(url, init){ return fetch(viaProxy(url), init); };
 
-  function key(table){ return NS + ":" + String(table || "default"); }
-  function read(table){
-    try { return JSON.parse(localStorage.getItem(key(table)) || "{}") || {}; }
-    catch (e) { return {}; }
-  }
-  function write(table, obj){
-    try { localStorage.setItem(key(table), JSON.stringify(obj)); } catch (e) {}
+  // The preview frame has an opaque origin, so localStorage is unavailable here.
+  // Every ocDB call is proxied to the host window, which owns the real store —
+  // that keeps the Database panel and the generated app perfectly in sync.
+  var pending = {};
+  var seq = 0;
+  window.addEventListener("message", function (e) {
+    var d = e.data;
+    if (!d || d.source !== "oc-db-host") return;
+    var p = pending[d.rid];
+    if (!p) return;
+    delete pending[d.rid];
+    if (d.ok) p.res(d.data);
+    else p.rej(new Error(d.error || "database error"));
+  });
+  function rpc(op, table, id, value) {
+    return new Promise(function (res, rej) {
+      var rid = ++seq;
+      pending[rid] = { res: res, rej: rej };
+      try {
+        parent.postMessage({
+          source: "oc-preview", type: "db", rid: rid, op: op,
+          table: String(table == null ? "default" : table),
+          id: id == null ? null : String(id), value: value
+        }, "*");
+      } catch (err) { delete pending[rid]; rej(err); return; }
+      setTimeout(function () {
+        if (pending[rid]) { delete pending[rid]; rej(new Error("ocDB timeout")); }
+      }, 8000);
+    });
   }
   window.ocDB = {
-    get: function(table, id){ return Promise.resolve(read(table)[String(id)] === undefined ? null : read(table)[String(id)]); },
-    set: function(table, id, value){
-      var o = read(table); o[String(id)] = value; write(table, o);
-      return Promise.resolve(value);
-    },
-    list: function(table){
-      var o = read(table);
-      return Promise.resolve(Object.keys(o).map(function(k){
-        var v = o[k];
-        return (v && typeof v === "object" && !Array.isArray(v)) ? Object.assign({ id: k }, v) : { id: k, value: v };
-      }));
-    },
-    remove: function(table, id){ var o = read(table); delete o[String(id)]; write(table, o); return Promise.resolve(true); },
-    clear: function(table){ write(table, {}); return Promise.resolve(true); }
+    get: function (table, id) { return rpc("get", table, id); },
+    set: function (table, id, value) { return rpc("set", table, id, value); },
+    list: function (table) { return rpc("list", table); },
+    remove: function (table, id) { return rpc("remove", table, id); },
+    clear: function (table) { return rpc("clear", table); }
   };
+
 
   window.ocAI = function(prompt, opts){
     opts = opts || {};

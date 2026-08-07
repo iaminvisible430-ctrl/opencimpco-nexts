@@ -4,13 +4,20 @@ import {
   Check,
   FileCode2,
   FilePlus2,
+  FileText,
+  FolderTree,
   Globe,
+  Hammer,
   Loader2,
+  Package,
   PlayCircle,
   Scissors,
   ShieldCheck,
   Sparkles,
+  SquareTerminal,
   Trash2,
+  Wand2,
+  MoveRight,
 } from "lucide-react";
 import type { AgentStep, StepKind } from "@/lib/agent-steps";
 import { cn } from "@/lib/utils";
@@ -23,11 +30,20 @@ const ICONS: Record<StepKind, typeof Brain> = {
   write: FilePlus2,
   edit: Scissors,
   rm: Trash2,
+  mv: MoveRight,
+  install: Package,
+  cmd: SquareTerminal,
+  lint: ShieldCheck,
+  fmt: Wand2,
+  index: FolderTree,
+  docs: FileText,
+  build: Hammer,
   check: ShieldCheck,
   selftest: ShieldCheck,
   verify: Sparkles,
   resume: PlayCircle,
 };
+
 
 
 export function AgentActivity({ steps }: { steps: AgentStep[] }) {

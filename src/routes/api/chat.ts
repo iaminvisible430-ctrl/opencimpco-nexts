@@ -99,7 +99,28 @@ function langOf(path: string) {
   return EXT_LANG[ext] ?? ext;
 }
 
+/** Tool name -> activity marker the client renders in the agent timeline. */
+const TOOL_MARKER: Record<string, string> = {
+  web_search: "search",
+  fetch_page: "read",
+  list_files: "ls",
+  read_file: "cat",
+  write_file: "write",
+  edit_file: "edit",
+  delete_file: "rm",
+  rename_file: "mv",
+  install_package: "install",
+  run_command: "cmd",
+  lint_project: "lint",
+  format_file: "fmt",
+  index_project: "index",
+  write_docs: "docs",
+  build_project: "build",
+  check_project: "check",
+};
+
 type VFile = { code: string; lang: string };
+
 
 /** In-memory project the file tools operate on for the duration of one request. */
 class Workspace {
@@ -146,6 +167,233 @@ class Workspace {
     this.deleted.add(path);
     return { ok: true, path };
   }
+  rename(from: string, to: string) {
+    const f = this.files.get(from);
+    if (!f) return { error: `No such file: ${from}` };
+    if (this.files.has(to)) return { error: `${to} already exists — pick another path.` };
+    this.files.set(to, { code: f.code, lang: langOf(to) });
+    this.files.delete(from);
+    this.changed.add(to);
+    this.changed.delete(from);
+    this.deleted.add(from);
+    return { ok: true, from, to };
+  }
+
+  /** Recorded dependencies. The preview resolves bare imports from a CDN. */
+  deps = new Set<string>();
+  install(pkg: string, version = "latest") {
+    const name = pkg.trim().replace(/\s+/g, "");
+    if (!name) return { error: "package name is required" };
+    this.deps.add(name);
+    const pj = this.files.get("package.json");
+    if (pj) {
+      try {
+        const json = JSON.parse(pj.code) as Record<string, unknown>;
+        const deps = (json.dependencies as Record<string, string>) ?? {};
+        deps[name] = version === "latest" ? "*" : version;
+        json.dependencies = deps;
+        this.write("package.json", JSON.stringify(json, null, 2) + "\n");
+      } catch {
+        /* leave a malformed package.json alone */
+      }
+    }
+    return {
+      ok: true,
+      installed: name,
+      note: "The preview resolves bare imports from esm.sh automatically — just import it.",
+    };
+  }
+
+  format(path: string) {
+    const f = this.files.get(path);
+    if (!f) return { error: `No such file: ${path}` };
+    const code =
+      f.code
+        .replace(/\t/g, "  ")
+        .split("\n")
+        .map((l) => l.replace(/[ \t]+$/, ""))
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/\s+$/, "") + "\n";
+    const changed = code !== f.code;
+    if (changed) {
+      this.files.set(path, { code, lang: f.lang });
+      this.changed.add(path);
+    }
+    return { ok: true, path, changed };
+  }
+
+  /** Deeper review than check(): quality, a11y and leftovers. */
+  lint() {
+    const warnings: string[] = [];
+    for (const [path, f] of this.files) {
+      const lines = f.code.split("\n");
+      lines.forEach((l, i) => {
+        const at = `${path}:${i + 1}`;
+        if (/console\.log\(/.test(l)) warnings.push(`${at}: leftover console.log`);
+        if (/<img(?![^>]*\balt=)[^>]*>/.test(l)) warnings.push(`${at}: <img> without alt text`);
+        if (/<div[^>]*onClick=/.test(l)) warnings.push(`${at}: click handler on a div — use a button`);
+        if (/\.map\(\s*\(?[a-zA-Z]/.test(l) && /<[A-Za-z]/.test(l) && !/key=/.test(l))
+          warnings.push(`${at}: list item may be missing a React key`);
+        if (/(?:width|height|color|background):\s*#?[0-9a-fA-F]{3,6}\b/.test(l) && /style=\{\{/.test(l))
+          warnings.push(`${at}: hardcoded inline colour — use a token`);
+        if (l.length > 220) warnings.push(`${at}: very long line (${l.length} chars)`);
+      });
+    }
+    const base = this.check();
+    return {
+      ok: base.ok && warnings.length === 0,
+      errors: base.problems,
+      warnings: warnings.slice(0, 60),
+    };
+  }
+
+  /** Structural map so the agent can reason about the project without reading it all. */
+  index() {
+    const out = [...this.files.entries()].map(([path, f]) => {
+      const imports = [...f.code.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
+      const exports = [...f.code.matchAll(/export\s+(?:default\s+)?(?:function|const|class)\s+([A-Za-z0-9_$]+)/g)].map(
+        (m) => m[1],
+      );
+      return {
+        path,
+        lang: f.lang,
+        lines: f.code.split("\n").length,
+        bytes: f.code.length,
+        hasDefaultExport: /export\s+default/.test(f.code),
+        exports: exports.slice(0, 12),
+        imports: imports.slice(0, 20),
+      };
+    });
+    return { files: out, entry: out.find((f) => /^src\/App\.(jsx|tsx)$/.test(f.path))?.path ?? null };
+  }
+
+  /** Write a README from the real file list. */
+  docs(title = "Project") {
+    const idx = this.index();
+    const body = [
+      `# ${title}`,
+      "",
+      "Generated with OpenMatrix Agent.",
+      "",
+      "## Files",
+      "",
+      ...idx.files.map((f) => `- \`${f.path}\` — ${f.lines} lines${f.exports.length ? `, exports ${f.exports.join(", ")}` : ""}`),
+      "",
+      "## Run locally",
+      "",
+      "```bash",
+      "npm install",
+      "npm run dev",
+      "```",
+      "",
+      ...(this.deps.size ? ["## Dependencies", "", ...[...this.deps].map((d) => `- ${d}`), ""] : []),
+    ].join("\n");
+    this.write("README.md", body);
+    return { ok: true, path: "README.md", bytes: body.length };
+  }
+
+  /** Static "build": resolve the module graph and report like a bundler would. */
+  build() {
+    const started = Date.now();
+    const problems = this.check();
+    const idx = this.index();
+    const bytes = [...this.files.values()].reduce((n, f) => n + f.code.length, 0);
+    return {
+      ok: problems.ok,
+      entry: idx.entry,
+      modules: idx.files.length,
+      bytes,
+      ms: Date.now() - started,
+      problems: problems.problems,
+    };
+  }
+
+  /** Sandbox shell over the project — the same commands the Terminal tab exposes. */
+  runCommand(command: string): { command: string; output: string; code: number } {
+    const cmd = command.trim();
+    const [name, ...args] = cmd.split(/\s+/);
+    const arg = args.join(" ");
+    const done = (output: string, code = 0) => ({ command: cmd, output, code });
+
+    switch (name) {
+      case "ls":
+        return done(
+          this.list()
+            .filter((p) => (arg ? p.startsWith(arg.replace(/\/$/, "") + "/") : true))
+            .join("\n") || "(empty)",
+        );
+      case "tree":
+        return done(
+          [...this.files.entries()].map(([p, f]) => `${p}  ${f.code.split("\n").length}L`).join("\n"),
+        );
+      case "cat": {
+        const f = this.files.get(arg);
+        return f ? done(f.code.slice(0, 8000)) : done(`cat: ${arg}: not found`, 1);
+      }
+      case "wc":
+        return done(
+          [...this.files.entries()]
+            .map(([p, f]) => `${String(f.code.split("\n").length).padStart(5)} ${p}`)
+            .join("\n"),
+        );
+      case "grep": {
+        if (!arg) return done("usage: grep <pattern>", 1);
+        const hits: string[] = [];
+        for (const [p, f] of this.files)
+          f.code.split("\n").forEach((l, i) => {
+            if (l.toLowerCase().includes(arg.toLowerCase())) hits.push(`${p}:${i + 1}: ${l.trim()}`);
+          });
+        return done(hits.slice(0, 60).join("\n") || "no matches");
+      }
+      case "stat":
+        return done(`files ${this.files.size}\ndeps  ${[...this.deps].join(", ") || "none"}`);
+      case "build": {
+        const r = this.build();
+        return done(
+          `entry ${r.entry ?? "none"}\nmodules ${r.modules}\nbytes ${r.bytes}\n` +
+            (r.ok ? "✓ build passed" : r.problems.map((p) => `✗ ${p}`).join("\n")),
+          r.ok ? 0 : 1,
+        );
+      }
+      case "test": {
+        const r = this.check();
+        return done(r.ok ? "✓ all checks passed" : r.problems.map((p) => `✗ ${p}`).join("\n"), r.ok ? 0 : 1);
+      }
+      case "lint": {
+        const r = this.lint();
+        return done(
+          [...r.errors.map((e) => `error ${e}`), ...r.warnings.map((w) => `warn  ${w}`)].join("\n") ||
+            "✓ no lint findings",
+          r.errors.length ? 1 : 0,
+        );
+      }
+      case "npm":
+      case "pnpm":
+      case "bun":
+      case "yarn": {
+        if (args[0] === "install" || args[0] === "add" || args[0] === "i") {
+          const pkgs = args.slice(1).filter((a) => !a.startsWith("-"));
+          if (!pkgs.length) return done("up to date, audited 0 packages");
+          pkgs.forEach((p) => this.install(p));
+          return done(`added ${pkgs.length} package(s): ${pkgs.join(", ")}`);
+        }
+        if (args[0] === "run" || args[0] === "build") return this.runCommand("build");
+        return done(`${name}: unsupported subcommand "${args[0] ?? ""}"`, 1);
+      }
+      case "echo":
+        return done(arg);
+      case "":
+      case undefined:
+        return done("", 0);
+      default:
+        return done(
+          `${name}: command not found. Available: ls, tree, cat, grep, wc, stat, build, test, lint, npm install <pkg>, echo.`,
+          127,
+        );
+    }
+  }
+
 
   /** Cheap static review so the agent can self-test without a real build. */
   check() {
@@ -361,6 +609,51 @@ export const Route = createFileRoute("/api/chat")({
               inputSchema: z.object({ path: z.string() }),
               execute: async ({ path }) => ws.remove(path),
             }),
+            rename_file: tool({
+              description: "Rename or move a file, keeping its contents. Update every import that referenced it.",
+              inputSchema: z.object({ from: z.string(), to: z.string() }),
+              execute: async ({ from, to }) => ws.rename(from, to),
+            }),
+            install_package: tool({
+              description:
+                "Record an npm dependency for the project. The preview resolves bare imports from a CDN, so after installing you can import the package directly.",
+              inputSchema: z.object({ name: z.string(), version: z.string().default("latest") }),
+              execute: async ({ name, version }) => ws.install(name, version),
+            }),
+            run_command: tool({
+              description:
+                "Run a command in the project sandbox shell. Supported: ls, tree, cat <file>, grep <text>, wc, stat, build, test, lint, npm install <pkg>, echo.",
+              inputSchema: z.object({ command: z.string() }),
+              execute: async ({ command }) => ws.runCommand(command),
+            }),
+            lint_project: tool({
+              description:
+                "Deep quality review: leftover console.log, missing alt text, click handlers on divs, missing React keys, hardcoded colours, plus all build errors.",
+              inputSchema: z.object({}),
+              execute: async () => ws.lint(),
+            }),
+            format_file: tool({
+              description: "Normalise whitespace and indentation in one file.",
+              inputSchema: z.object({ path: z.string() }),
+              execute: async ({ path }) => ws.format(path),
+            }),
+            index_project: tool({
+              description:
+                "Structural map of the project: every file with its line count, exports and imports, plus the detected entry file. Use this before large refactors instead of reading everything.",
+              inputSchema: z.object({}),
+              execute: async () => ws.index(),
+            }),
+            write_docs: tool({
+              description: "Generate README.md from the real project structure.",
+              inputSchema: z.object({ title: z.string().default("Project") }),
+              execute: async ({ title }) => ws.docs(title),
+            }),
+            build_project: tool({
+              description:
+                "Build the project: resolve the module graph, report entry file, module count, bundle size and any blocking problems. Run this before you finish.",
+              inputSchema: z.object({}),
+              execute: async () => ws.build(),
+            }),
             check_project: tool({
               description:
                 "Static self-test of the whole project: missing entry file, unresolved relative imports, unbalanced braces, placeholders. Run after your edits.",
@@ -368,6 +661,7 @@ export const Route = createFileRoute("/api/chat")({
               execute: async () => ws.check(),
             }),
           };
+
 
           const encoder = new TextEncoder();
           const stream = new ReadableStream({
@@ -414,24 +708,12 @@ export const Route = createFileRoute("/api/chat")({
                     push(part.text);
                   } else if (part.type === "tool-call") {
                     const input = part.input as Record<string, unknown>;
-                    const label = String(input?.query ?? input?.url ?? input?.path ?? "");
-                    const kind =
-                      part.toolName === "fetch_page"
-                        ? "read"
-                        : part.toolName === "web_search"
-                          ? "search"
-                          : part.toolName === "list_files"
-                            ? "ls"
-                            : part.toolName === "read_file"
-                              ? "cat"
-                              : part.toolName === "write_file"
-                                ? "write"
-                                : part.toolName === "edit_file"
-                                  ? "edit"
-                                  : part.toolName === "delete_file"
-                                    ? "rm"
-                                    : "check";
+                    const label = String(
+                      input?.query ?? input?.url ?? input?.command ?? input?.path ?? input?.name ?? input?.from ?? "",
+                    );
+                    const kind = TOOL_MARKER[part.toolName] ?? "check";
                     push(`\n\n[[oc:${kind}:${label.replace(/[\]\n]/g, " ")}]]\n\n`);
+
                   } else if (part.type === "error") {
                     const err = part.error;
                     push(`\n\n[error] ${err instanceof Error ? err.message : String(err)}`);

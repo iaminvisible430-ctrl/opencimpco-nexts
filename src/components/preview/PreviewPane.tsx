@@ -4,6 +4,7 @@ import {
   Code2,
   CheckCircle2,
   Copy,
+  Database,
   ExternalLink,
   FileCode2,
   Monitor,
@@ -15,34 +16,49 @@ import {
 import { toast } from "sonner";
 import { buildPreviewDoc, projectKind, type PFile } from "@/lib/preview/build";
 import { analyzeProject } from "@/lib/preview/analyze";
+import { attachDbHost, type DbEvent } from "@/lib/preview/db-host";
 import { CodeEditor } from "./CodeEditor";
 import { TerminalPane } from "./TerminalPane";
 import { ShipPanel } from "./ShipPanel";
+import { SidePanel } from "./SidePanel";
 import { cn } from "@/lib/utils";
 
 type LogLine = { level: string; text: string };
 type Status = "loading" | "ok" | "error";
+
+/** The preview shim namespaces its store under this key. */
+const DB_PROJECT = "preview";
 
 export function PreviewPane({
   files,
   className,
   defaultDevice = "desktop",
   projectName,
+  chatId = "",
+  modelLabel = "",
+  provider = "",
+  contextChars = 0,
 }: {
   files: PFile[];
   className?: string;
   defaultDevice?: "mobile" | "desktop";
   projectName?: string;
+  chatId?: string;
+  modelLabel?: string;
+  provider?: string;
+  contextChars?: number;
 }) {
   const [device, setDevice] = useState<"mobile" | "desktop">(defaultDevice);
   const runnable = projectKind(files) !== null;
-  const [view, setView] = useState<"app" | "editor" | "console" | "terminal" | "ship">(
+  const [view, setView] = useState<"app" | "editor" | "console" | "terminal" | "ship" | "data">(
     runnable ? "app" : "editor",
   );
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [nonce, setNonce] = useState(0);
   const [status, setStatus] = useState<Status>("loading");
   const [logs, setLogs] = useState<LogLine[]>([]);
+  const [dbEvents, setDbEvents] = useState<DbEvent[]>([]);
+  const [dbVersion, setDbVersion] = useState(0);
   const frame = useRef<HTMLIFrameElement>(null);
 
   const merged = useMemo(
@@ -53,6 +69,18 @@ export function PreviewPane({
   const active = merged.find((f) => f.path === openPath) ?? merged[0];
   const issues = useMemo(() => analyzeProject(merged), [merged]);
   const doc = useMemo(() => (runnable ? buildPreviewDoc(merged) : ""), [merged, runnable]);
+
+  // Serve ocDB calls from the sandboxed frame, which has no storage of its own.
+  useEffect(
+    () =>
+      attachDbHost(
+        DB_PROJECT,
+        (e) => setDbEvents((l) => [...l, e].slice(-120)),
+        () => setDbVersion((v) => v + 1),
+      ),
+    [],
+  );
+
 
   useEffect(() => {
     if (!runnable) return;

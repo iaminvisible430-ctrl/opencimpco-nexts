@@ -118,11 +118,17 @@ export function Markdown({
 
   const chunks = rest.split(/```([^\n`]*)\n?([\s\S]*?)```/g);
 
+  const lastTextChunk = chunks.length - (chunks.length % 3 === 1 ? 1 : 3);
+
   for (let i = 0; i < chunks.length; i++) {
     if (i % 3 === 0) {
       const block = chunks[i];
       if (!block?.trim()) continue;
-      block.split(/\n{2,}/).forEach((para, k) => {
+      const paras = block.split(/\n{2,}/);
+      paras.forEach((para, k) => {
+        // Only the very last paragraph of the newest chunk is still growing, so
+        // it is the only one that gets the token reveal animation.
+        const reveal = !!streaming && !openBlock && i === lastTextChunk && k === paras.length - 1;
         const lines = para.split("\n");
         const isList = lines.every((l) => /^\s*([-*]|\d+\.)\s+/.test(l) || !l.trim());
         if (isList && lines.some((l) => l.trim())) {
@@ -152,10 +158,11 @@ export function Markdown({
         }
         out.push(
           <p key={`${i}-${k}`} className="my-2 whitespace-pre-wrap text-[15px] leading-6">
-            <Inline text={para} />
+            <Inline text={para} reveal={reveal} />
           </p>,
         );
       });
+
     } else if (i % 3 === 1) {
       const { lang, path } = fenceMeta(chunks[i] || "");
       out.push(<CodeBlock key={i} lang={lang} path={path} code={chunks[i + 1] ?? ""} />);

@@ -687,24 +687,12 @@ export const Route = createFileRoute("/api/chat")({
                     push(part.text);
                   } else if (part.type === "tool-call") {
                     const input = part.input as Record<string, unknown>;
-                    const label = String(input?.query ?? input?.url ?? input?.path ?? "");
-                    const kind =
-                      part.toolName === "fetch_page"
-                        ? "read"
-                        : part.toolName === "web_search"
-                          ? "search"
-                          : part.toolName === "list_files"
-                            ? "ls"
-                            : part.toolName === "read_file"
-                              ? "cat"
-                              : part.toolName === "write_file"
-                                ? "write"
-                                : part.toolName === "edit_file"
-                                  ? "edit"
-                                  : part.toolName === "delete_file"
-                                    ? "rm"
-                                    : "check";
+                    const label = String(
+                      input?.query ?? input?.url ?? input?.command ?? input?.path ?? input?.name ?? input?.from ?? "",
+                    );
+                    const kind = TOOL_MARKER[part.toolName] ?? "check";
                     push(`\n\n[[oc:${kind}:${label.replace(/[\]\n]/g, " ")}]]\n\n`);
+
                   } else if (part.type === "error") {
                     const err = part.error;
                     push(`\n\n[error] ${err instanceof Error ? err.message : String(err)}`);

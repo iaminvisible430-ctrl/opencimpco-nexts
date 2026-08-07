@@ -215,6 +215,22 @@ export function PreviewPane({
 
       {view === "ship" && <ShipPanel files={merged} suggestedName={projectName} />}
 
+      {view === "data" && (
+        <SidePanel
+          project={DB_PROJECT}
+          chatId={chatId}
+          modelLabel={modelLabel}
+          provider={provider}
+          contextChars={contextChars}
+          logs={logs}
+          issues={issues}
+          dbEvents={dbEvents}
+          dbVersion={dbVersion}
+          onDbChange={() => setDbVersion((v) => v + 1)}
+        />
+      )}
+
+
       {view === "console" && (
         <div className="min-h-0 flex-1 overflow-auto p-3 font-mono text-[11px] leading-5">
           {issues.map((i, k) => (

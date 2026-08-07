@@ -130,6 +130,10 @@ export function PreviewPane({
         <Seg active={view === "ship"} onClick={() => setView("ship")}>
           <Rocket className="h-3.5 w-3.5" /> Ship
         </Seg>
+        <Seg active={view === "data"} onClick={() => setView("data")}>
+          <Database className="h-3.5 w-3.5" /> Data
+        </Seg>
+
         <Seg active={view === "console"} onClick={() => setView("console")}>
           <FileCode2 className="h-3.5 w-3.5" /> Console
           {issues.length > 0 && (

@@ -6,6 +6,14 @@ export type StepKind =
   | "write"
   | "edit"
   | "rm"
+  | "mv"
+  | "install"
+  | "cmd"
+  | "lint"
+  | "fmt"
+  | "index"
+  | "docs"
+  | "build"
   | "check"
   | "selftest"
   | "verify"
@@ -31,9 +39,36 @@ const LABELS: Record<string, { kind: StepKind; label: string }> = {
   write: { kind: "write", label: "Writing file" },
   edit: { kind: "edit", label: "Editing file" },
   rm: { kind: "rm", label: "Deleting file" },
+  mv: { kind: "mv", label: "Renaming file" },
+  install: { kind: "install", label: "Installing dependency" },
+  cmd: { kind: "cmd", label: "Running command" },
+  lint: { kind: "lint", label: "Linting the project" },
+  fmt: { kind: "fmt", label: "Formatting file" },
+  index: { kind: "index", label: "Indexing the project" },
+  docs: { kind: "docs", label: "Writing documentation" },
+  build: { kind: "build", label: "Building the project" },
   check: { kind: "check", label: "Checking the project" },
   resume: { kind: "resume", label: "Resuming from where it paused" },
 };
+
+const TOOL_NAMES = [
+  "web_search",
+  "fetch_page",
+  "list_files",
+  "read_file",
+  "write_file",
+  "edit_file",
+  "delete_file",
+  "rename_file",
+  "install_package",
+  "run_command",
+  "lint_project",
+  "format_file",
+  "index_project",
+  "write_docs",
+  "build_project",
+  "check_project",
+].join("|");
 
 /**
  * Some providers leak raw tool-call scaffolding into the text channel instead of
@@ -45,8 +80,12 @@ const TOOL_NOISE = [
   /<\|tool_calls?_(?:begin|section_begin)\|>[\s\S]*?<\|tool_calls?_(?:end|section_end)\|>/g,
   /<\|(?:python_tag|tool▁calls▁begin|tool▁calls▁end|tool▁call▁begin|tool▁sep)\|>/g,
   /<function=[^>]*>[\s\S]*?<\/function>/g,
-  /^\s*\{"(?:name|tool_name|function)"\s*:\s*"(?:web_search|fetch_page|list_files|read_file|write_file|edit_file|delete_file|check_project)"[\s\S]*?\}\s*$/gm,
+  new RegExp(
+    `^\\s*\\{"(?:name|tool_name|function)"\\s*:\\s*"(?:${TOOL_NAMES})"[\\s\\S]*?\\}\\s*$`,
+    "gm",
+  ),
 ];
+
 
 /** Strip markers and provider tool noise out of displayable text. */
 export function stripMarkers(text: string): string {

@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Check, Copy, Loader2 } from "lucide-react";
 import { highlight } from "@/lib/highlight";
+import { Reveal } from "./StreamReveal";
 import { cn } from "@/lib/utils";
 
-function Inline({ text }: { text: string }) {
+function Inline({ text, reveal }: { text: string; reveal?: boolean }) {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
   return (
     <>
@@ -18,11 +19,16 @@ function Inline({ text }: { text: string }) {
               {s.slice(1, -1)}
             </code>
           );
-        return <span key={i}>{s}</span>;
+        return (
+          <span key={i}>
+            <Reveal text={s} active={reveal} />
+          </span>
+        );
       })}
     </>
   );
 }
+
 
 export function CodeBlock({
   lang,

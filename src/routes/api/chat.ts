@@ -588,6 +588,51 @@ export const Route = createFileRoute("/api/chat")({
               inputSchema: z.object({ path: z.string() }),
               execute: async ({ path }) => ws.remove(path),
             }),
+            rename_file: tool({
+              description: "Rename or move a file, keeping its contents. Update every import that referenced it.",
+              inputSchema: z.object({ from: z.string(), to: z.string() }),
+              execute: async ({ from, to }) => ws.rename(from, to),
+            }),
+            install_package: tool({
+              description:
+                "Record an npm dependency for the project. The preview resolves bare imports from a CDN, so after installing you can import the package directly.",
+              inputSchema: z.object({ name: z.string(), version: z.string().default("latest") }),
+              execute: async ({ name, version }) => ws.install(name, version),
+            }),
+            run_command: tool({
+              description:
+                "Run a command in the project sandbox shell. Supported: ls, tree, cat <file>, grep <text>, wc, stat, build, test, lint, npm install <pkg>, echo.",
+              inputSchema: z.object({ command: z.string() }),
+              execute: async ({ command }) => ws.runCommand(command),
+            }),
+            lint_project: tool({
+              description:
+                "Deep quality review: leftover console.log, missing alt text, click handlers on divs, missing React keys, hardcoded colours, plus all build errors.",
+              inputSchema: z.object({}),
+              execute: async () => ws.lint(),
+            }),
+            format_file: tool({
+              description: "Normalise whitespace and indentation in one file.",
+              inputSchema: z.object({ path: z.string() }),
+              execute: async ({ path }) => ws.format(path),
+            }),
+            index_project: tool({
+              description:
+                "Structural map of the project: every file with its line count, exports and imports, plus the detected entry file. Use this before large refactors instead of reading everything.",
+              inputSchema: z.object({}),
+              execute: async () => ws.index(),
+            }),
+            write_docs: tool({
+              description: "Generate README.md from the real project structure.",
+              inputSchema: z.object({ title: z.string().default("Project") }),
+              execute: async ({ title }) => ws.docs(title),
+            }),
+            build_project: tool({
+              description:
+                "Build the project: resolve the module graph, report entry file, module count, bundle size and any blocking problems. Run this before you finish.",
+              inputSchema: z.object({}),
+              execute: async () => ws.build(),
+            }),
             check_project: tool({
               description:
                 "Static self-test of the whole project: missing entry file, unresolved relative imports, unbalanced braces, placeholders. Run after your edits.",
@@ -595,6 +640,7 @@ export const Route = createFileRoute("/api/chat")({
               execute: async () => ws.check(),
             }),
           };
+
 
           const encoder = new TextEncoder();
           const stream = new ReadableStream({

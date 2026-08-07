@@ -99,7 +99,28 @@ function langOf(path: string) {
   return EXT_LANG[ext] ?? ext;
 }
 
+/** Tool name -> activity marker the client renders in the agent timeline. */
+const TOOL_MARKER: Record<string, string> = {
+  web_search: "search",
+  fetch_page: "read",
+  list_files: "ls",
+  read_file: "cat",
+  write_file: "write",
+  edit_file: "edit",
+  delete_file: "rm",
+  rename_file: "mv",
+  install_package: "install",
+  run_command: "cmd",
+  lint_project: "lint",
+  format_file: "fmt",
+  index_project: "index",
+  write_docs: "docs",
+  build_project: "build",
+  check_project: "check",
+};
+
 type VFile = { code: string; lang: string };
+
 
 /** In-memory project the file tools operate on for the duration of one request. */
 class Workspace {

@@ -275,7 +275,8 @@ function ChatPage() {
             className="min-h-0 min-w-0 flex-1"
             chatId={id}
             modelLabel={getModel(modelId).name}
-            provider={getModel(modelId).provider}
+            provider={getModel(modelId).providerKey}
+
             contextChars={contextRef.current.length}
           />
         )}

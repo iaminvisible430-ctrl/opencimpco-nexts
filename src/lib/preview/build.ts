@@ -234,14 +234,48 @@ const RUNTIME = String.raw`
       return;
     }
     var specs = bareSpecifiers();
-    for (var i = 0; i < specs.length; i++) {
-      var s = specs[i];
+    // Pin the dependencies previews rely on most, so a bad "latest" upstream
+    // release can never break a generated app, and load them all in parallel.
+    var PINNED = {
+      "lucide-react": "lucide-react@0.462.0",
+      "framer-motion": "framer-motion@11.15.0",
+      "motion/react": "framer-motion@11.15.0",
+      "clsx": "clsx@2.1.1",
+      "tailwind-merge": "tailwind-merge@2.6.0",
+      "class-variance-authority": "class-variance-authority@0.7.1",
+      "recharts": "recharts@2.15.0",
+      "chart.js": "chart.js@4.4.7",
+      "date-fns": "date-fns@4.1.0",
+      "zustand": "zustand@5.0.2",
+      "zod": "zod@3.24.1",
+      "uuid": "uuid@11.0.3",
+      "nanoid": "nanoid@5.0.9",
+      "axios": "axios@1.7.9",
+      "react-router-dom": "react-router-dom@6.28.0",
+      "react-hook-form": "react-hook-form@7.54.2",
+      "@tanstack/react-query": "@tanstack/react-query@5.62.7",
+      "canvas-confetti": "canvas-confetti@1.9.3",
+      "howler": "howler@2.2.4",
+      "lodash-es": "lodash-es@4.17.21",
+      "papaparse": "papaparse@5.4.1",
+      "marked": "marked@15.0.4",
+      "dompurify": "dompurify@3.2.3",
+      "three": "three@0.171.0",
+      "@react-three/fiber": "@react-three/fiber@8.17.10",
+      "@react-three/drei": "@react-three/drei@9.117.3",
+      "react-icons": "react-icons@5.4.0",
+      "sonner": "sonner@1.7.1",
+      "immer": "immer@10.1.1",
+      "qrcode": "qrcode@1.5.4"
+    };
+    await Promise.all(specs.map(async function (s) {
+      var target = PINNED[s] || s;
       try {
-        externals[s] = await import(/* @vite-ignore */ "https://esm.sh/" + s + "?external=react,react-dom");
+        externals[s] = await import(/* @vite-ignore */ "https://esm.sh/" + target + "?external=react,react-dom");
       } catch (e) {
         console.warn("Could not load " + s + " from CDN: " + e.message);
       }
-    }
+    }));
     var root = document.getElementById("root");
     try {
       var exports = requireModule("./" + ENTRY, "__entry__");

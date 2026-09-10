@@ -15,6 +15,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedChatsRouteImport } from './routes/_authenticated/chats'
 import { Route as AuthenticatedHomeRouteImport } from './routes/_authenticated/home'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
+import { Route as AgentNewRouteImport } from './routes/agent.new'
 import { Route as ApiChatRouteImport } from './routes/api/chat'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
 import { Route as AuthenticatedChatIdRouteImport } from './routes/_authenticated/chat.$id'
@@ -50,6 +51,11 @@ const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AgentNewRoute = AgentNewRouteImport.update({
+  id: '/agent/new',
+  path: '/agent/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiChatRoute = ApiChatRouteImport.update({
   id: '/api/chat',
   path: '/api/chat',
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/chats': typeof AuthenticatedChatsRoute
   '/home': typeof AuthenticatedHomeRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/agent/new': typeof AgentNewRoute
   '/api/chat': typeof ApiChatRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/chat/$id': typeof AuthenticatedChatIdRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/chats': typeof AuthenticatedChatsRoute
   '/home': typeof AuthenticatedHomeRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/agent/new': typeof AgentNewRoute
   '/api/chat': typeof ApiChatRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/chat/$id': typeof AuthenticatedChatIdRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/_authenticated/chats': typeof AuthenticatedChatsRoute
   '/_authenticated/home': typeof AuthenticatedHomeRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
+  '/agent/new': typeof AgentNewRoute
   '/api/chat': typeof ApiChatRoute
   '/projects/$slug': typeof ProjectsSlugRoute
   '/_authenticated/chat/$id': typeof AuthenticatedChatIdRoute
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
     | '/chats'
     | '/home'
     | '/profile'
+    | '/agent/new'
     | '/api/chat'
     | '/projects/$slug'
     | '/chat/$id'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
     | '/chats'
     | '/home'
     | '/profile'
+    | '/agent/new'
     | '/api/chat'
     | '/projects/$slug'
     | '/chat/$id'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
     | '/_authenticated/chats'
     | '/_authenticated/home'
     | '/_authenticated/profile'
+    | '/agent/new'
     | '/api/chat'
     | '/projects/$slug'
     | '/_authenticated/chat/$id'
@@ -158,6 +170,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  AgentNewRoute: typeof AgentNewRoute
   ApiChatRoute: typeof ApiChatRoute
   ProjectsSlugRoute: typeof ProjectsSlugRoute
   ApiPublicAiRoute: typeof ApiPublicAiRoute
@@ -207,6 +220,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/profile'
       preLoaderRoute: typeof AuthenticatedProfileRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/agent/new': {
+      id: '/agent/new'
+      path: '/agent/new'
+      fullPath: '/agent/new'
+      preLoaderRoute: typeof AgentNewRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/chat': {
       id: '/api/chat'
@@ -267,6 +287,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  AgentNewRoute: AgentNewRoute,
   ApiChatRoute: ApiChatRoute,
   ProjectsSlugRoute: ProjectsSlugRoute,
   ApiPublicAiRoute: ApiPublicAiRoute,

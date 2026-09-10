@@ -712,7 +712,13 @@ export const Route = createFileRoute("/api/chat")({
                       input?.query ?? input?.url ?? input?.command ?? input?.path ?? input?.name ?? input?.from ?? "",
                     );
                     const kind = TOOL_MARKER[part.toolName] ?? "check";
+                    // Emitted the moment the call starts, so the UI shimmers the row
+                    // while the tool actually runs instead of looking frozen.
                     push(`\n\n[[oc:${kind}:${label.replace(/[\]\n]/g, " ")}]]\n\n`);
+                  } else if (part.type === "tool-result") {
+                    const kind = TOOL_MARKER[part.toolName] ?? "check";
+                    push(`\n\n[[oc:end:${kind}]]\n\n`);
+
 
                   } else if (part.type === "error") {
                     const err = part.error;

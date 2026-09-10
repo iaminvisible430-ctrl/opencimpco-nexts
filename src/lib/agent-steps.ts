@@ -121,17 +121,33 @@ export function deriveSteps(raw: string, streaming: boolean): AgentStep[] {
   }
 
   let n = 0;
+  // Markers arrive as pairs: the tool start, then `[[oc:end:<kind>]]` when the
+  // tool actually returns. Anything still unpaired is running right now.
+  const pending: AgentStep[] = [];
   for (const m of raw.matchAll(new RegExp(MARKER))) {
+    if (m[1] === "end") {
+      const kind = m[2]?.trim();
+      for (let i = pending.length - 1; i >= 0; i--) {
+        if (pending[i].state === "active" && (!kind || LABELS[kind]?.kind === pending[i].kind)) {
+          pending[i].state = "done";
+          break;
+        }
+      }
+      continue;
+    }
     const meta = LABELS[m[1]];
     if (!meta) continue;
-    steps.push({
+    pending.push({
       id: `mk-${n++}`,
       kind: meta.kind,
       label: meta.label,
       detail: m[2]?.trim() || undefined,
-      state: "done",
+      state: m[1] === "resume" ? "done" : "active",
     });
   }
+  // A finished stream can never have a running tool.
+  for (const s of pending) if (!streaming) s.state = "done";
+  steps.push(...pending);
 
   // Count fence boundaries to know whether the last file is still being written.
   const fenceCount = (raw.match(/^\s*```/gm) ?? []).length;

@@ -142,7 +142,7 @@ export function deriveSteps(raw: string, streaming: boolean): AgentStep[] {
       kind: meta.kind,
       label: meta.label,
       detail: m[2]?.trim() || undefined,
-      state: "active",
+      state: m[1] === "resume" ? "done" : "active",
     });
   }
   // A finished stream can never have a running tool.

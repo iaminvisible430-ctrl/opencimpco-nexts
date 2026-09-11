@@ -1,7 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Sparkles, X } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import whatsNew from "@/assets/whats-new.jpg";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 /** Bump this when the next batch of features ships — everyone sees the card once. */
 const RELEASE = "beta-2026-09-1";
@@ -35,26 +42,18 @@ export function WhatsNew() {
     }
   }
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 grid place-items-end bg-black/70 p-3 backdrop-blur-sm sm:place-items-center">
-      <div className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
+    <Dialog open={open} onOpenChange={(next) => !next && close()}>
+      <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-md gap-0 overflow-y-auto rounded-lg border-border bg-card p-0 shadow-2xl">
         <div className="relative">
           <img
             src={whatsNew}
             alt="Preview of the new OpenMatrix agent activity and preview panels"
             width={1280}
             height={720}
+            loading="lazy"
             className="h-40 w-full object-cover"
           />
-          <button
-            onClick={close}
-            aria-label="Close"
-            className="tap tap-press absolute right-2 top-2 grid h-9 w-9 place-items-center rounded-full bg-black/50 text-white backdrop-blur"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
 
         <div className="space-y-3 p-5">
@@ -64,7 +63,10 @@ export function WhatsNew() {
               Update · Beta
             </span>
           </div>
-          <h2 className="text-xl font-bold leading-tight">You just got new features</h2>
+          <DialogTitle className="text-xl font-bold leading-tight">You just got new features</DialogTitle>
+          <DialogDescription className="sr-only">
+            A summary of the newest OpenMatrix Agent beta improvements.
+          </DialogDescription>
           <ul className="space-y-1.5 text-[13.5px] leading-6 text-muted-foreground">
             {FEATURES.map((f) => (
               <li key={f} className="flex gap-2">
@@ -74,22 +76,15 @@ export function WhatsNew() {
             ))}
           </ul>
           <div className="flex gap-2 pt-1">
-            <button
-              onClick={close}
-              className="tap tap-press flex-1 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground"
-            >
+            <Button onClick={close} className="tap tap-press flex-1">
               Start building
-            </button>
-            <Link
-              to="/agent/new"
-              onClick={close}
-              className="tap tap-press rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-foreground"
-            >
-              Roadmap
-            </Link>
+            </Button>
+            <Button asChild variant="outline" className="tap tap-press">
+              <Link to="/agent/new" onClick={close}>Roadmap</Link>
+            </Button>
           </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

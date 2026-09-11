@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
+import { WhatsNew } from "@/components/WhatsNew";
 
 function NotFoundComponent() {
   return (
@@ -94,8 +95,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "OpenMatrix Agent — AI coding, live preview, publish" },
       { name: "twitter:description", content: "Mobile-first AI coding assistant with deep thinking, streaming responses, image attachments and live React / HTML preview." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/26a7acc8-1224-46fb-ad92-73cac4c3ade1/id-preview-6e64cd6c--9fec0c52-0818-4021-b0d6-762c87f8411a.lovable.app-1785493961443.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/26a7acc8-1224-46fb-ad92-73cac4c3ade1/id-preview-6e64cd6c--9fec0c52-0818-4021-b0d6-762c87f8411a.lovable.app-1785493961443.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
